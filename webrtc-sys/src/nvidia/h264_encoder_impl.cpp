@@ -444,25 +444,6 @@ void NvidiaH264EncoderImpl::SetRates(
 
   if (configuration_.target_bps) {
     configuration_.SetStreamState(true);
-    // Reconfigure NVENC with the new bitrate
-    try {
-      NV_ENC_RECONFIGURE_PARAMS reconfig = {};
-      reconfig.version = NV_ENC_RECONFIGURE_PARAMS_VER;
-      reconfig.reInitEncodeParams = nv_initialize_params_;
-      reconfig.reInitEncodeParams.frameRateNum =
-          static_cast<uint32_t>(parameters.framerate_fps);
-      reconfig.reInitEncodeParams.frameRateDen = 1;
-      nv_encode_config_.rcParams.averageBitRate = configuration_.target_bps;
-      nv_encode_config_.rcParams.vbvBufferSize =
-          (nv_encode_config_.rcParams.averageBitRate *
-           reconfig.reInitEncodeParams.frameRateDen /
-           reconfig.reInitEncodeParams.frameRateNum) * 5;
-      nv_encode_config_.rcParams.vbvInitialDelay =
-          nv_encode_config_.rcParams.vbvBufferSize;
-      encoder_->Reconfigure(&reconfig);
-    } catch (...) {
-      // Reconfigure may fail — not fatal
-    }
   } else {
     configuration_.SetStreamState(false);
   }
