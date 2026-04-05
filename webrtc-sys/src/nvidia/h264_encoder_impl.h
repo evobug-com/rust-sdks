@@ -1,11 +1,8 @@
 #ifndef WEBRTC_NVIDIA_H264_ENCODER_IMPL_H_
 #define WEBRTC_NVIDIA_H264_ENCODER_IMPL_H_
 
-// Include winsock2.h before cuda.h to prevent winsock.h/winsock2.h conflicts
-// (cuda.h → NvCodec headers → Logger.h → winsock2.h, but WebRTC headers
-// may have already included winsock.h via windows.h)
 #ifdef _WIN32
-#include <winsock2.h>
+#include "win_compat.h"
 #endif
 #include <cuda.h>
 

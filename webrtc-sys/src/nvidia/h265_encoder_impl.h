@@ -2,7 +2,7 @@
 #define WEBRTC_NVIDIA_H265_ENCODER_IMPL_H_
 
 #ifdef _WIN32
-#include <winsock2.h>
+#include "win_compat.h"
 #endif
 #include <cuda.h>
 

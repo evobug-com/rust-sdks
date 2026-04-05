@@ -40,7 +40,15 @@
 #include <stdlib.h>
 
 #ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#define _NV_UNDEF_WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
+#ifdef _NV_UNDEF_WIN32_LEAN_AND_MEAN
+#undef WIN32_LEAN_AND_MEAN
+#undef _NV_UNDEF_WIN32_LEAN_AND_MEAN
+#endif
 #endif
 
 #ifdef _MSC_VER
