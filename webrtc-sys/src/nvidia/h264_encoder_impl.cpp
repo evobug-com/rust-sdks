@@ -231,6 +231,11 @@ int32_t NvidiaH264EncoderImpl::InitEncode(
   nv_encode_config_.rcParams.vbvInitialDelay =
       nv_encode_config_.rcParams.vbvBufferSize;
 
+  // Prevent quality collapse: cap QP at 28 so text stays readable
+  // even if the target bitrate is momentarily low.
+  nv_encode_config_.rcParams.enableMaxQP = 1;
+  nv_encode_config_.rcParams.maxQP = {28, 28, 28};  // I, P, B
+
   try {
     encoder_->CreateEncoder(&nv_initialize_params_);
   } catch (const NVENCException& e) {
@@ -414,6 +419,7 @@ VideoEncoder::EncoderInfo NvidiaH264EncoderImpl::GetEncoderInfo() const {
   info.implementation_name = "NVIDIA H264 Encoder";
   info.scaling_settings = VideoEncoder::ScalingSettings::kOff;
   info.is_hardware_accelerated = true;
+  info.has_trusted_rate_controller = true;  // Disable libwebrtc frame dropper
   info.supports_simulcast = false;
   info.preferred_pixel_formats = {VideoFrameBuffer::Type::kI420};
   return info;
@@ -437,10 +443,38 @@ void NvidiaH264EncoderImpl::SetRates(
   }
 
   codec_.maxFramerate = static_cast<uint32_t>(parameters.framerate_fps);
-  codec_.maxBitrate = parameters.bitrate.GetSpatialLayerSum(0);
 
-  configuration_.target_bps = parameters.bitrate.GetSpatialLayerSum(0);
+  // Enforce a minimum bitrate floor to prevent BWE from throttling
+  // the encoder to unusable levels (e.g., 27kbps for 1080p screenshare).
+  // 1.5 Mbps is the minimum for readable 1080p text content.
+  static constexpr uint32_t kMinBitrateBps = 1'500'000;
+  uint32_t target_bps = parameters.bitrate.GetSpatialLayerSum(0);
+  target_bps = std::max(target_bps, kMinBitrateBps);
+
+  codec_.maxBitrate = target_bps;
+  configuration_.target_bps = target_bps;
   configuration_.max_frame_rate = parameters.framerate_fps;
+
+  // Actually apply the new bitrate to NVENC via Reconfigure().
+  // Without this, the encoder stays at its initial bitrate forever.
+  nv_encode_config_.rcParams.averageBitRate = target_bps;
+  nv_encode_config_.rcParams.vbvBufferSize =
+      (target_bps * nv_initialize_params_.frameRateDen /
+       nv_initialize_params_.frameRateNum) * 5;
+  nv_encode_config_.rcParams.vbvInitialDelay =
+      nv_encode_config_.rcParams.vbvBufferSize;
+
+  nv_initialize_params_.frameRateNum =
+      static_cast<uint32_t>(parameters.framerate_fps);
+
+  try {
+    NV_ENC_RECONFIGURE_PARAMS reconfigure_params = {};
+    reconfigure_params.version = NV_ENC_RECONFIGURE_PARAMS_VER;
+    reconfigure_params.reInitEncodeParams = nv_initialize_params_;
+    encoder_->Reconfigure(&reconfigure_params);
+  } catch (const NVENCException& e) {
+    RTC_LOG(LS_ERROR) << "NVENC H264 Reconfigure failed: " << e.what();
+  }
 
   if (configuration_.target_bps) {
     configuration_.SetStreamState(true);
