@@ -4,6 +4,7 @@
 // when Chromium's WebRTC headers and NVIDIA's CUDA/NvCodec headers are mixed.
 #ifdef _WIN32
 #pragma once
+#pragma message("TRACE win_compat.h: entering")
 
 // Ensure winsock2.h wins over winsock.h by defining the winsock.h guard
 // BEFORE windows.h has a chance to include it

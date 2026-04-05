@@ -21,6 +21,8 @@ fn main() {
         return;
     }
 
+
+
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
     let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
     let is_desktop = target_os == "linux" || target_os == "windows" || target_os == "macos";
@@ -193,6 +195,10 @@ fn main() {
                     .flag("/wd4819")
                     .flag("/wd4068");
                 println!("cargo:warning=NVENC support enabled (CUDA found at {})", cuda_home.display());
+                // Debug: print all defines being passed
+                println!("cargo:warning=NVENC defines check: WIN32_LEAN_AND_MEAN should be defined");
+                // Try to detect winsock issue at build time
+                println!("cargo:warning=SDK 26100 winsock guard: windows.h line 193 guards winsock.h with WIN32_LEAN_AND_MEAN");
             } else {
                 println!("cargo:warning=cuda.h not found at {}; building without NVENC hardware encoding", cuda_include_dir.display());
             }
