@@ -133,6 +133,45 @@ fn main() {
     println!("cargo:rustc-link-lib=static=webrtc");
     match target_os.as_str() {
         "windows" => {
+            // Auto-setup Visual Studio environment for NVENC compilation.
+            // cc-rs's find-msvc-tools constructs an INCLUDE env that causes
+            // winsock.h/winsock2.h conflicts with WebRTC+CUDA headers.
+            // Running vcvarsall first provides the correct environment.
+            if env::var("VCINSTALLDIR").is_err() {
+                // Find vcvarsall.bat
+                let vs_paths = [
+                    r"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvarsall.bat",
+                    r"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat",
+                    r"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat",
+                    r"C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvarsall.bat",
+                    r"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvarsall.bat",
+                    r"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat",
+                ];
+                if let Some(vcvarsall) = vs_paths.iter().find(|p| Path::new(p).exists()) {
+                    // Run vcvarsall and capture the resulting INCLUDE/LIB/PATH
+                    let output = Command::new("cmd")
+                        .args(["/c", &format!("\"{}\" x64 >NUL 2>&1 && set", vcvarsall)])
+                        .output();
+                    if let Ok(output) = output {
+                        let stdout = String::from_utf8_lossy(&output.stdout);
+                        for line in stdout.lines() {
+                            if let Some((key, value)) = line.split_once('=') {
+                                match key {
+                                    "INCLUDE" | "LIB" | "LIBPATH" | "VCINSTALLDIR" |
+                                    "WindowsSdkDir" | "UCRTVersion" | "VCToolsVersion" |
+                                    "WindowsSDKVersion" | "VSCMD_ARG_HOST_ARCH" |
+                                    "VSCMD_ARG_TGT_ARCH" => {
+                                        env::set_var(key, value);
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                        println!("cargo:warning=Auto-configured Visual Studio environment via vcvarsall");
+                    }
+                }
+            }
+
             println!("cargo:rustc-link-lib=dylib=msdmo");
             println!("cargo:rustc-link-lib=dylib=wmcodecdspuuid");
             println!("cargo:rustc-link-lib=dylib=dmoguids");
@@ -195,10 +234,6 @@ fn main() {
                     .flag("/wd4819")
                     .flag("/wd4068");
                 println!("cargo:warning=NVENC support enabled (CUDA found at {})", cuda_home.display());
-                // Debug: print all defines being passed
-                println!("cargo:warning=NVENC defines check: WIN32_LEAN_AND_MEAN should be defined");
-                // Try to detect winsock issue at build time
-                println!("cargo:warning=SDK 26100 winsock guard: windows.h line 193 guards winsock.h with WIN32_LEAN_AND_MEAN");
             } else {
                 println!("cargo:warning=cuda.h not found at {}; building without NVENC hardware encoding", cuda_include_dir.display());
             }
