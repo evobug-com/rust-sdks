@@ -192,7 +192,16 @@ pub fn compute_video_encodings(
     }
 
     if !options.simulcast {
-        return into_rtp_encodings(width, height, &[initial_preset]);
+        let mut encodings = into_rtp_encodings(width, height, &[initial_preset]);
+        // For screenshare, set a min_bitrate so the BitrateAllocator won't let
+        // BWE throttle below a usable level. This is critical on localhost where
+        // BWE's delay-based estimator incorrectly detects "congestion."
+        if screenshare {
+            for enc in &mut encodings {
+                enc.min_bitrate = Some(2_000_000); // 2 Mbps floor
+            }
+        }
+        return encodings;
     }
 
     let mut simulcast_presets = match options.simulcast_layers {
