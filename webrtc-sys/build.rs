@@ -233,6 +233,12 @@ fn main() {
                     .file("src/nvidia/cuda_context.cpp")
                     .flag("/wd4819")
                     .flag("/wd4068");
+
+                // Link CUDA driver API (provides cu* symbols like cuCtxSetCurrent)
+                let cuda_lib_dir = cuda_home.join("lib").join("x64");
+                println!("cargo:rustc-link-search=native={}", cuda_lib_dir.display());
+                println!("cargo:rustc-link-lib=dylib=cuda");
+
                 println!("cargo:warning=NVENC support enabled (CUDA found at {})", cuda_home.display());
             } else {
                 println!("cargo:warning=cuda.h not found at {}; building without NVENC hardware encoding", cuda_include_dir.display());
