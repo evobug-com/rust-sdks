@@ -231,11 +231,6 @@ int32_t NvidiaH264EncoderImpl::InitEncode(
   nv_encode_config_.rcParams.vbvInitialDelay =
       nv_encode_config_.rcParams.vbvBufferSize;
 
-  // Prevent quality collapse: cap QP at 28 so text stays readable
-  // even if the target bitrate is momentarily low.
-  nv_encode_config_.rcParams.enableMaxQP = 1;
-  nv_encode_config_.rcParams.maxQP = {28, 28, 28};  // I, P, B
-
   try {
     encoder_->CreateEncoder(&nv_initialize_params_);
   } catch (const NVENCException& e) {
