@@ -353,7 +353,7 @@ VideoEncoder::EncoderInfo NvidiaH265EncoderImpl::GetEncoderInfo() const {
   info.implementation_name = "NVIDIA H265 Encoder";
   info.scaling_settings = VideoEncoder::ScalingSettings::kOff;
   info.is_hardware_accelerated = true;
-  info.has_trusted_rate_controller = true;  // Disable libwebrtc frame dropper
+  info.has_trusted_rate_controller = false;
   info.supports_simulcast = false;
   info.preferred_pixel_formats = {VideoFrameBuffer::Type::kI420};
   return info;
@@ -378,12 +378,7 @@ void NvidiaH265EncoderImpl::SetRates(
 
   codec_.maxFramerate = static_cast<uint32_t>(parameters.framerate_fps);
 
-  // Enforce a minimum bitrate floor to prevent BWE from throttling
-  // the encoder to unusable levels (e.g., 27kbps for 1080p screenshare).
-  // 1.5 Mbps is the minimum for readable 1080p text content.
-  static constexpr uint32_t kMinBitrateBps = 1'500'000;
   uint32_t target_bps = parameters.bitrate.GetSpatialLayerSum(0);
-  target_bps = std::max(target_bps, kMinBitrateBps);
 
   codec_.maxBitrate = target_bps;
   configuration_.target_bps = target_bps;
