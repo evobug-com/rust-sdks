@@ -40,7 +40,7 @@
 #include "livekit/android.h"
 #endif
 
-#if defined(USE_NVIDIA_VIDEO_CODEC)
+#if defined(USE_NVIDIA_VIDEO_ENCODER)
 #include "nvidia/nvidia_encoder_factory.h"
 #endif
 

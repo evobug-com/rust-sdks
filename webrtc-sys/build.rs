@@ -216,19 +216,17 @@ fn main() {
                 // is fixed by patching nvEncodeAPI.h and NvEncoder.cpp to use
                 // WIN32_LEAN_AND_MEAN before including <windows.h>.
                 builder
-                    .define("USE_NVIDIA_VIDEO_CODEC", "1")
+                    .define("USE_NVIDIA_VIDEO_ENCODER", "1")
                     .include(&cuda_include_dir)
                     .include("src/nvidia")
                     .include("src/nvidia/NvCodec/include")
                     .include("src/nvidia/NvCodec/NvCodec")
-                    .file("src/nvidia/NvCodec/NvCodec/NvDecoder/NvDecoder.cpp")
+                    // Encoder only — decoder requires nvcuvid.lib (not in CUDA Toolkit).
+                    // Decoding is handled by the browser's WebRTC stack.
                     .file("src/nvidia/NvCodec/NvCodec/NvEncoder/NvEncoder.cpp")
                     .file("src/nvidia/NvCodec/NvCodec/NvEncoder/NvEncoderCuda.cpp")
                     .file("src/nvidia/h264_encoder_impl.cpp")
                     .file("src/nvidia/h265_encoder_impl.cpp")
-                    .file("src/nvidia/h264_decoder_impl.cpp")
-                    .file("src/nvidia/h265_decoder_impl.cpp")
-                    .file("src/nvidia/nvidia_decoder_factory.cpp")
                     .file("src/nvidia/nvidia_encoder_factory.cpp")
                     .file("src/nvidia/cuda_context.cpp")
                     .flag("/wd4819")
