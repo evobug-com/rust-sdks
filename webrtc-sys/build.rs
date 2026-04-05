@@ -216,26 +216,34 @@ fn main() {
                 // is fixed by patching nvEncodeAPI.h and NvEncoder.cpp to use
                 // WIN32_LEAN_AND_MEAN before including <windows.h>.
                 builder
-                    .define("USE_NVIDIA_VIDEO_ENCODER", "1")
+                    .define("USE_NVIDIA_VIDEO_CODEC", "1")
                     .include(&cuda_include_dir)
                     .include("src/nvidia")
                     .include("src/nvidia/NvCodec/include")
                     .include("src/nvidia/NvCodec/NvCodec")
-                    // Encoder only — decoder requires nvcuvid.lib (not in CUDA Toolkit).
-                    // Decoding is handled by the browser's WebRTC stack.
+                    // Encoder + decoder
+                    .file("src/nvidia/NvCodec/NvCodec/NvDecoder/NvDecoder.cpp")
                     .file("src/nvidia/NvCodec/NvCodec/NvEncoder/NvEncoder.cpp")
                     .file("src/nvidia/NvCodec/NvCodec/NvEncoder/NvEncoderCuda.cpp")
                     .file("src/nvidia/h264_encoder_impl.cpp")
                     .file("src/nvidia/h265_encoder_impl.cpp")
+                    .file("src/nvidia/h264_decoder_impl.cpp")
+                    .file("src/nvidia/h265_decoder_impl.cpp")
+                    .file("src/nvidia/nvidia_decoder_factory.cpp")
                     .file("src/nvidia/nvidia_encoder_factory.cpp")
                     .file("src/nvidia/cuda_context.cpp")
                     .flag("/wd4819")
                     .flag("/wd4068");
 
-                // Link CUDA driver API (provides cu* symbols like cuCtxSetCurrent)
+                // Link CUDA driver API (cu* symbols) and Video Codec API (cuvid* symbols)
                 let cuda_lib_dir = cuda_home.join("lib").join("x64");
                 println!("cargo:rustc-link-search=native={}", cuda_lib_dir.display());
                 println!("cargo:rustc-link-lib=dylib=cuda");
+                // nvcuvid.lib is generated from nvcuvid.dll (not in CUDA Toolkit,
+                // ships with the GPU driver). Bundled in lib/x64/.
+                let nvcuvid_lib_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).join("lib").join("x64");
+                println!("cargo:rustc-link-search=native={}", nvcuvid_lib_dir.display());
+                println!("cargo:rustc-link-lib=dylib=nvcuvid");
 
                 println!("cargo:warning=NVENC support enabled (CUDA found at {})", cuda_home.display());
             } else {
