@@ -21,9 +21,48 @@ fn main() {
         return;
     }
 
-
-
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
+
+    // On Windows: auto-setup Visual Studio environment BEFORE cc/cxx finds tools.
+    // cc-rs's find-msvc-tools constructs an INCLUDE env that causes winsock.h/winsock2.h
+    // conflicts with WebRTC+CUDA headers. Running vcvarsall first fixes this.
+    if target_os == "windows" && env::var("VCINSTALLDIR").is_err() {
+        println!("cargo:warning=Setting up Visual Studio environment automatically...");
+        let vswhere = Path::new(r"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe");
+        if vswhere.exists() {
+            if let Ok(output) = Command::new(vswhere)
+                .args(["-latest", "-property", "installationPath"])
+                .output()
+            {
+                let vs_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !vs_path.is_empty() {
+                    let vcvarsall = PathBuf::from(&vs_path).join(r"VC\Auxiliary\Build\vcvarsall.bat");
+                    if vcvarsall.exists() {
+                        if let Ok(env_output) = Command::new("cmd")
+                            .args(["/c", &format!("\"{}\" x64 >NUL 2>&1 && set", vcvarsall.display())])
+                            .output()
+                        {
+                            let stdout = String::from_utf8_lossy(&env_output.stdout);
+                            for line in stdout.lines() {
+                                if let Some((key, value)) = line.split_once('=') {
+                                    match key {
+                                        "INCLUDE" | "LIB" | "LIBPATH" | "VCINSTALLDIR" |
+                                        "WindowsSdkDir" | "UCRTVersion" | "VCToolsVersion" |
+                                        "WindowsSDKVersion" | "PATH" => {
+                                            env::set_var(key, value);
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                            println!("cargo:warning=Auto-configured Visual Studio environment from {}", vs_path);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
     let is_desktop = target_os == "linux" || target_os == "windows" || target_os == "macos";
 
@@ -133,45 +172,6 @@ fn main() {
     println!("cargo:rustc-link-lib=static=webrtc");
     match target_os.as_str() {
         "windows" => {
-            // Auto-setup Visual Studio environment for NVENC compilation.
-            // cc-rs's find-msvc-tools constructs an INCLUDE env that causes
-            // winsock.h/winsock2.h conflicts with WebRTC+CUDA headers.
-            // Running vcvarsall first provides the correct environment.
-            if env::var("VCINSTALLDIR").is_err() {
-                // Find vcvarsall.bat
-                let vs_paths = [
-                    r"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvarsall.bat",
-                    r"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat",
-                    r"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat",
-                    r"C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvarsall.bat",
-                    r"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvarsall.bat",
-                    r"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat",
-                ];
-                if let Some(vcvarsall) = vs_paths.iter().find(|p| Path::new(p).exists()) {
-                    // Run vcvarsall and capture the resulting INCLUDE/LIB/PATH
-                    let output = Command::new("cmd")
-                        .args(["/c", &format!("\"{}\" x64 >NUL 2>&1 && set", vcvarsall)])
-                        .output();
-                    if let Ok(output) = output {
-                        let stdout = String::from_utf8_lossy(&output.stdout);
-                        for line in stdout.lines() {
-                            if let Some((key, value)) = line.split_once('=') {
-                                match key {
-                                    "INCLUDE" | "LIB" | "LIBPATH" | "VCINSTALLDIR" |
-                                    "WindowsSdkDir" | "UCRTVersion" | "VCToolsVersion" |
-                                    "WindowsSDKVersion" | "VSCMD_ARG_HOST_ARCH" |
-                                    "VSCMD_ARG_TGT_ARCH" => {
-                                        env::set_var(key, value);
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
-                        println!("cargo:warning=Auto-configured Visual Studio environment via vcvarsall");
-                    }
-                }
-            }
-
             println!("cargo:rustc-link-lib=dylib=msdmo");
             println!("cargo:rustc-link-lib=dylib=wmcodecdspuuid");
             println!("cargo:rustc-link-lib=dylib=dmoguids");
