@@ -156,10 +156,11 @@ fn main() {
                 .flag("/std:c++20")
                 .flag("/EHsc");
 
-            // NVIDIA NVENC hardware encoding support (requires CUDA Toolkit headers)
+            // NVIDIA NVENC hardware encoding support (requires CUDA Toolkit headers).
+            // Compiled as a SEPARATE static library to avoid winsock.h/winsock2.h
+            // conflicts between Chromium's libc++ headers and NvCodec headers.
             let cuda_home = PathBuf::from(env::var("CUDA_HOME").unwrap_or_else(|_| {
-                // Try common CUDA install paths on Windows
-                for ver in ["v12.9", "v12.8", "v12.7", "v12.6", "v12.5", "v12.4", "v12.3", "v12.2", "v12.1", "v12.0", "v11.8"] {
+                for ver in ["v13.2", "v13.1", "v13.0", "v12.9", "v12.8", "v12.7", "v12.6", "v12.5", "v12.4", "v12.3", "v12.2", "v12.1", "v12.0", "v11.8"] {
                     let p = format!("C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\{ver}");
                     if PathBuf::from(&p).join("include").join("cuda.h").exists() {
                         return p;
@@ -170,8 +171,13 @@ fn main() {
             let cuda_include_dir = cuda_home.join("include");
 
             if cuda_include_dir.join("cuda.h").exists() {
+                // Add NVIDIA files to the MAIN builder. The winsock conflict
+                // is fixed by patching nvEncodeAPI.h and NvEncoder.cpp to use
+                // WIN32_LEAN_AND_MEAN before including <windows.h>.
                 builder
+                    .define("USE_NVIDIA_VIDEO_CODEC", "1")
                     .include(&cuda_include_dir)
+                    .include("src/nvidia")
                     .include("src/nvidia/NvCodec/include")
                     .include("src/nvidia/NvCodec/NvCodec")
                     .file("src/nvidia/NvCodec/NvCodec/NvDecoder/NvDecoder.cpp")
@@ -184,10 +190,8 @@ fn main() {
                     .file("src/nvidia/nvidia_decoder_factory.cpp")
                     .file("src/nvidia/nvidia_encoder_factory.cpp")
                     .file("src/nvidia/cuda_context.cpp")
-                    .define("USE_NVIDIA_VIDEO_CODEC", "1")
-                    .flag("/wd4819")   // suppress codepage warnings in NVIDIA headers
-                    .flag("/wd4068");  // suppress unknown pragma warnings
-
+                    .flag("/wd4819")
+                    .flag("/wd4068");
                 println!("cargo:warning=NVENC support enabled (CUDA found at {})", cuda_home.display());
             } else {
                 println!("cargo:warning=cuda.h not found at {}; building without NVENC hardware encoding", cuda_include_dir.display());

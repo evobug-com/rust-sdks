@@ -2,7 +2,7 @@
 #define WEBRTC_SYS_NVIDIA_CUDA_CONTEXT_H
 
 #ifdef _WIN32
-#include <winsock2.h>
+#include "win_compat.h"
 #endif
 #include <cuda.h>
 
