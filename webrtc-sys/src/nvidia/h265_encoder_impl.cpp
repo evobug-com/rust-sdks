@@ -158,15 +158,14 @@ int32_t NvidiaH265EncoderImpl::InitEncode(
   // Configure HEVC-specific settings for 10-bit + HDR VUI metadata
   auto& hevcConfig = nv_encode_config_.encodeCodecConfig.hevcConfig;
   hevcConfig.pixelBitDepthMinus8 = 2;  // 10-bit output
-  hevcConfig.inputBitDepthMinus8 = 0;  // 8-bit input (NVENC upscales)
   // HDR VUI parameters (BT.2020 + PQ transfer)
   auto& vuiParams = hevcConfig.hevcVUIParameters;
   vuiParams.videoSignalTypePresentFlag = 1;
   vuiParams.videoFullRangeFlag = 0;  // Studio range
   vuiParams.colourDescriptionPresentFlag = 1;
-  vuiParams.colourPrimaries = 9;           // BT.2020
-  vuiParams.transferCharacteristics = 16;  // SMPTE ST 2084 (PQ)
-  vuiParams.colourMatrix = 9;              // BT.2020 non-constant
+  vuiParams.colourPrimaries = NV_ENC_VUI_COLOR_PRIMARIES_BT2020;
+  vuiParams.transferCharacteristics = NV_ENC_VUI_TRANSFER_CHARACTERISTIC_SMPTE2084;
+  vuiParams.colourMatrix = NV_ENC_VUI_MATRIX_COEFFS_BT2020_NCL;
   nv_encode_config_.rcParams.vbvBufferSize =
       (nv_encode_config_.rcParams.averageBitRate *
        nv_initialize_params_.frameRateDen /
