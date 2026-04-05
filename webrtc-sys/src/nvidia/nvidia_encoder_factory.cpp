@@ -167,7 +167,7 @@ std::unique_ptr<VideoEncoder> NvidiaVideoEncoderFactory::Create(
       }
 
       if (format.name == "H265" || format.name == "HEVC") {
-        RTC_LOG(LS_INFO) << "Using NVIDIA HW encoder (NVENC) for H265/HEVC";
+        RTC_LOG(LS_INFO) << "Using NVIDIA HW encoder (NVENC) for H265/HEVC Main 10 (HDR)";
         return std::make_unique<NvidiaH265EncoderImpl>(
             env, cu_context_->GetContext(), CU_MEMORYTYPE_DEVICE,
             NV_ENC_BUFFER_FORMAT_IYUV, format);
