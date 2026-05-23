@@ -10,6 +10,12 @@ repository.workspace = true
 [features]
 default = []
 
+# Linux NVENC opt-in. Off by default because it requires CUDA Toolkit
+# headers at build time. Enable from the consuming crate with:
+#   webrtc-sys = { ..., features = ["nvenc-linux"] }
+# Windows NVENC is always-on in this fork (the `nvenc-windows` branch).
+nvenc-linux = []
+
 [dependencies]
 cxx = "1.0"
 log = { workspace = true }

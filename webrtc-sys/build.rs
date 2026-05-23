@@ -296,7 +296,18 @@ fn main() {
                 }
             }
 
-            if x86 || arm {
+            // Linux NVENC is off by default — opt in with `--features nvenc-linux`.
+            // Without the gate, every Linux consumer of webrtc-sys would hard-fail
+            // unless CUDA Toolkit headers were installed at the expected path, even
+            // when they don't want hardware codecs. Windows NVENC stays always-on
+            // because this fork's whole point (the `nvenc-windows` branch) is to
+            // ship the Windows NVENC pipeline.
+            //
+            // Re-enabling Linux NVENC later is just a matter of building the
+            // consuming crate with `--features webrtc-sys/nvenc-linux` and having
+            // CUDA Toolkit available at $CUDA_HOME or /usr/local/cuda.
+            let nvenc_linux = env::var("CARGO_FEATURE_NVENC_LINUX").is_ok();
+            if nvenc_linux && (x86 || arm) {
                 let cuda_home = PathBuf::from(match env::var("CUDA_HOME") {
                     Ok(p) => p,
                     Err(_) => "/usr/local/cuda".to_owned(),
