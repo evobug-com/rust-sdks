@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use crate::packet::Handle;
-use from_variants::FromVariants;
 use std::{
     fmt::Display,
     marker::PhantomData,
@@ -30,10 +29,17 @@ pub struct DataTrack<L> {
     pub(crate) _location: PhantomData<L>,
 }
 
-#[derive(Debug, Clone, FromVariants)]
+#[derive(Debug, Clone)]
 pub(crate) enum DataTrackInner {
     Local(crate::local::LocalTrackInner),
     Remote(crate::remote::RemoteTrackInner),
+}
+
+impl From<crate::local::LocalTrackInner> for DataTrackInner {
+    fn from(v: crate::local::LocalTrackInner) -> Self { Self::Local(v) }
+}
+impl From<crate::remote::RemoteTrackInner> for DataTrackInner {
+    fn from(v: crate::remote::RemoteTrackInner) -> Self { Self::Remote(v) }
 }
 
 impl<L> DataTrack<L> {

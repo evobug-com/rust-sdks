@@ -4309,7 +4309,6 @@ dependencies = [
  "anyhow",
  "bytes",
  "fake",
- "from_variants",
  "futures-core",
  "futures-util",
  "indexmap 2.13.0",

@@ -16,7 +16,6 @@ tokio = { workspace = true, default-features = false, features = ["sync"] }
 futures-util = { workspace = true, default-features = false, features = ["sink"] }
 futures-core = { workspace = true }
 bytes = { workspace = true }
-from_variants = { workspace = true }
 tokio-stream = { workspace = true, features = ["sync"] }
 anyhow = { workspace = true } # For internal error handling only
 rand = { workspace = true }
