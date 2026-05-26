@@ -20,12 +20,14 @@ use crate::{
     packet::Handle,
 };
 use bytes::Bytes;
-use from_variants::FromVariants;
 use std::collections::HashMap;
 use tokio::sync::{broadcast, oneshot};
 
+// Manual `From` impls in place of `from_variants::FromVariants`. See the same
+// note in `crate::local::events`.
+
 /// An external event handled by [`Manager`](super::manager::Manager).
-#[derive(Debug, FromVariants)]
+#[derive(Debug)]
 pub enum InputEvent {
     SubscribeRequest(SubscribeRequest),
     UnsubscribeRequest(UnsubscribeRequest),
@@ -44,12 +46,41 @@ pub enum InputEvent {
     Shutdown,
 }
 
+impl From<SubscribeRequest> for InputEvent {
+    fn from(v: SubscribeRequest) -> Self { Self::SubscribeRequest(v) }
+}
+impl From<UnsubscribeRequest> for InputEvent {
+    fn from(v: UnsubscribeRequest) -> Self { Self::UnsubscribeRequest(v) }
+}
+impl From<SfuPublicationUpdates> for InputEvent {
+    fn from(v: SfuPublicationUpdates) -> Self { Self::SfuPublicationUpdates(v) }
+}
+impl From<SfuSubscriberHandles> for InputEvent {
+    fn from(v: SfuSubscriberHandles) -> Self { Self::SfuSubscriberHandles(v) }
+}
+impl From<SetPipelineOptions> for InputEvent {
+    fn from(v: SetPipelineOptions) -> Self { Self::SetPipelineOptions(v) }
+}
+impl From<Bytes> for InputEvent {
+    fn from(v: Bytes) -> Self { Self::PacketReceived(v) }
+}
+
 /// An event produced by [`Manager`](super::manager::Manager) requiring external action.
-#[derive(Debug, FromVariants)]
+#[derive(Debug)]
 pub enum OutputEvent {
     SfuUpdateSubscription(SfuUpdateSubscription),
     TrackPublished(TrackPublished),
     TrackUnpublished(TrackUnpublished),
+}
+
+impl From<SfuUpdateSubscription> for OutputEvent {
+    fn from(v: SfuUpdateSubscription) -> Self { Self::SfuUpdateSubscription(v) }
+}
+impl From<TrackPublished> for OutputEvent {
+    fn from(v: TrackPublished) -> Self { Self::TrackPublished(v) }
+}
+impl From<TrackUnpublished> for OutputEvent {
+    fn from(v: TrackUnpublished) -> Self { Self::TrackUnpublished(v) }
 }
 
 // MARK: - Input events

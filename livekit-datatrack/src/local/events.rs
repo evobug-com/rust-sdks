@@ -17,12 +17,16 @@ use crate::{
     packet::Handle,
 };
 use bytes::Bytes;
-use from_variants::FromVariants;
 use std::sync::Arc;
 use tokio::sync::oneshot;
 
+// Manual `From` impls in place of `from_variants::FromVariants` so the crate
+// graph doesn't drag in `darling 0.14` + `syn 1` (the laggard chain from the
+// abandoned `from_variants` macro). Each `impl From<T> for Enum::Variant(T)`
+// below corresponds to one tuple variant of the enum.
+
 /// An external event handled by [`Manager`](super::manager::Manager).
-#[derive(Debug, FromVariants)]
+#[derive(Debug)]
 pub enum InputEvent {
     PublishRequest(PublishRequest),
     PublishCancelled(PublishCancelled),
@@ -40,13 +44,42 @@ pub enum InputEvent {
     Shutdown,
 }
 
+impl From<PublishRequest> for InputEvent {
+    fn from(v: PublishRequest) -> Self { Self::PublishRequest(v) }
+}
+impl From<PublishCancelled> for InputEvent {
+    fn from(v: PublishCancelled) -> Self { Self::PublishCancelled(v) }
+}
+impl From<QueryPublished> for InputEvent {
+    fn from(v: QueryPublished) -> Self { Self::QueryPublished(v) }
+}
+impl From<UnpublishRequest> for InputEvent {
+    fn from(v: UnpublishRequest) -> Self { Self::UnpublishRequest(v) }
+}
+impl From<SfuPublishResponse> for InputEvent {
+    fn from(v: SfuPublishResponse) -> Self { Self::SfuPublishResponse(v) }
+}
+impl From<SfuUnpublishResponse> for InputEvent {
+    fn from(v: SfuUnpublishResponse) -> Self { Self::SfuUnpublishResponse(v) }
+}
+
 /// An event produced by [`Manager`](super::manager::Manager) requiring external action.
-#[derive(Debug, FromVariants)]
+#[derive(Debug)]
 pub enum OutputEvent {
     SfuPublishRequest(SfuPublishRequest),
     SfuUnpublishRequest(SfuUnpublishRequest),
     /// Serialized packets are ready to be sent over the transport.
     PacketsAvailable(Vec<Bytes>),
+}
+
+impl From<SfuPublishRequest> for OutputEvent {
+    fn from(v: SfuPublishRequest) -> Self { Self::SfuPublishRequest(v) }
+}
+impl From<SfuUnpublishRequest> for OutputEvent {
+    fn from(v: SfuUnpublishRequest) -> Self { Self::SfuUnpublishRequest(v) }
+}
+impl From<Vec<Bytes>> for OutputEvent {
+    fn from(v: Vec<Bytes>) -> Self { Self::PacketsAvailable(v) }
 }
 
 // MARK: - Input events
