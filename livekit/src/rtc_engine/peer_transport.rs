@@ -271,7 +271,7 @@ impl PeerTransport {
         let lines: Vec<&str> =
             if uses_crlf { sdp.split("\r\n").collect() } else { sdp.split('\n').collect() };
 
-        // 1) Find VP9/AV1 payload types
+        // 1) Find video codec payload types (H264, H265, VP9, AV1)
         let mut target_pts: Vec<&str> = Vec::new();
         for line in &lines {
             let l = line.trim();
@@ -279,7 +279,10 @@ impl PeerTransport {
                 let mut it = rest.split_whitespace();
                 let pt = it.next().unwrap_or("");
                 let codec = it.next().unwrap_or("");
-                if (codec.starts_with("VP9/90000") || codec.starts_with("AV1/90000"))
+                if (codec.starts_with("VP9/90000")
+                    || codec.starts_with("AV1/90000")
+                    || codec.starts_with("H264/90000")
+                    || codec.starts_with("H265/90000"))
                     && !pt.is_empty()
                 {
                     target_pts.push(pt);
@@ -384,9 +387,14 @@ impl PeerTransport {
             }
         }
 
-        let is_vp9 = sdp.contains(" VP9/90000");
-        let is_av1 = sdp.contains(" AV1/90000");
-        if is_vp9 || is_av1 {
+        // Apply x-google-start-bitrate for all video codecs (H264, H265, VP9, AV1).
+        // Without this, H264/H265 start at libwebrtc's default 300kbps and BWE
+        // probes only reach ~1.8 Mbps, far below the 8 Mbps target for screenshare.
+        let has_video_codec = sdp.contains(" VP9/90000")
+            || sdp.contains(" AV1/90000")
+            || sdp.contains(" H264/90000")
+            || sdp.contains(" H265/90000");
+        if has_video_codec {
             if let Some(start_kbps) = Self::compute_start_bitrate_kbps(inner.max_send_bitrate_bps) {
                 log::info!(
                     "Applying x-google-start-bitrate={} kbps (ultimate_bps={:?})",
@@ -396,7 +404,7 @@ impl PeerTransport {
 
                 let munged = Self::munge_x_google_start_bitrate(&sdp, start_kbps);
                 if munged != sdp {
-                    log::info!("SDP munged successfully (VP9/AV1)");
+                    log::info!("SDP munged successfully");
                     match SessionDescription::parse(&munged, offer.sdp_type()) {
                         Ok(parsed) => offer = parsed,
                         Err(e) => log::warn!(
@@ -424,7 +432,7 @@ mod tests {
     use super::PeerTransport;
 
     #[test]
-    fn no_vp9_or_av1_is_noop() {
+    fn no_target_video_codec_is_noop() {
         let sdp = "v=0\n\
 o=- 0 0 IN IP4 127.0.0.1\n\
 s=-\n\
@@ -433,7 +441,7 @@ m=video 9 UDP/TLS/RTP/SAVPF 96\n\
 a=rtpmap:96 VP8/90000\n\
 a=fmtp:96 some=param\n";
         let out = PeerTransport::munge_x_google_start_bitrate(sdp, 3200);
-        assert_eq!(out, sdp, "should not change SDP if no VP9/AV1 present");
+        assert_eq!(out, sdp, "should not change SDP if no target video codec present");
     }
 
     #[test]

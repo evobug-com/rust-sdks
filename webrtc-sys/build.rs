@@ -22,6 +22,47 @@ fn main() {
     }
 
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
+
+    // On Windows: auto-setup Visual Studio environment BEFORE cc/cxx finds tools.
+    // cc-rs's find-msvc-tools constructs an INCLUDE env that causes winsock.h/winsock2.h
+    // conflicts with WebRTC+CUDA headers. Running vcvarsall first fixes this.
+    if target_os == "windows" && env::var("VCINSTALLDIR").is_err() {
+        println!("cargo:warning=Setting up Visual Studio environment automatically...");
+        let vswhere = Path::new(r"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe");
+        if vswhere.exists() {
+            if let Ok(output) = Command::new(vswhere)
+                .args(["-latest", "-property", "installationPath"])
+                .output()
+            {
+                let vs_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !vs_path.is_empty() {
+                    let vcvarsall = PathBuf::from(&vs_path).join(r"VC\Auxiliary\Build\vcvarsall.bat");
+                    if vcvarsall.exists() {
+                        if let Ok(env_output) = Command::new("cmd")
+                            .args(["/c", &format!("\"{}\" x64 >NUL 2>&1 && set", vcvarsall.display())])
+                            .output()
+                        {
+                            let stdout = String::from_utf8_lossy(&env_output.stdout);
+                            for line in stdout.lines() {
+                                if let Some((key, value)) = line.split_once('=') {
+                                    match key {
+                                        "INCLUDE" | "LIB" | "LIBPATH" | "VCINSTALLDIR" |
+                                        "WindowsSdkDir" | "UCRTVersion" | "VCToolsVersion" |
+                                        "WindowsSDKVersion" | "PATH" => {
+                                            env::set_var(key, value);
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                            println!("cargo:warning=Auto-configured Visual Studio environment from {}", vs_path);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
     let is_desktop = target_os == "linux" || target_os == "windows" || target_os == "macos";
 
@@ -153,17 +194,61 @@ fn main() {
             //println!("cargo:rustc-link-lib=dylib=va_win32");
 
             builder
-                //.include("./vaapi-windows/DirectX-Headers-1.0/include")
-                //.include(path::PathBuf::from("./vaapi-windows/x64/include"))
-                //.file("vaapi-windows/DirectX-Headers-1.0/src/dxguids.cpp")
-                //.file("src/vaapi/vaapi_display_win32.cpp")
-                //.file("src/vaapi/vaapi_h264_encoder_wrapper.cpp")
-                //.file("src/vaapi/vaapi_encoder_factory.cpp")
-                //.file("src/vaapi/h264_encoder_impl.cpp")
                 .flag("/std:c++20")
-                //.flag("/wd4819")
-                //.flag("/wd4068")
                 .flag("/EHsc");
+
+            // NVIDIA NVENC hardware encoding support (requires CUDA Toolkit headers).
+            // Compiled as a SEPARATE static library to avoid winsock.h/winsock2.h
+            // conflicts between Chromium's libc++ headers and NvCodec headers.
+            let cuda_home = PathBuf::from(env::var("CUDA_HOME").unwrap_or_else(|_| {
+                for ver in ["v13.2", "v13.1", "v13.0", "v12.9", "v12.8", "v12.7", "v12.6", "v12.5", "v12.4", "v12.3", "v12.2", "v12.1", "v12.0", "v11.8"] {
+                    let p = format!("C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\{ver}");
+                    if PathBuf::from(&p).join("include").join("cuda.h").exists() {
+                        return p;
+                    }
+                }
+                "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.0".to_owned()
+            }));
+            let cuda_include_dir = cuda_home.join("include");
+
+            if cuda_include_dir.join("cuda.h").exists() {
+                // Add NVIDIA files to the MAIN builder. The winsock conflict
+                // is fixed by patching nvEncodeAPI.h and NvEncoder.cpp to use
+                // WIN32_LEAN_AND_MEAN before including <windows.h>.
+                builder
+                    .define("USE_NVIDIA_VIDEO_CODEC", "1")
+                    .include(&cuda_include_dir)
+                    .include("src/nvidia")
+                    .include("src/nvidia/NvCodec/include")
+                    .include("src/nvidia/NvCodec/NvCodec")
+                    // Encoder + decoder
+                    .file("src/nvidia/NvCodec/NvCodec/NvDecoder/NvDecoder.cpp")
+                    .file("src/nvidia/NvCodec/NvCodec/NvEncoder/NvEncoder.cpp")
+                    .file("src/nvidia/NvCodec/NvCodec/NvEncoder/NvEncoderCuda.cpp")
+                    .file("src/nvidia/h264_encoder_impl.cpp")
+                    .file("src/nvidia/h265_encoder_impl.cpp")
+                    .file("src/nvidia/h264_decoder_impl.cpp")
+                    .file("src/nvidia/h265_decoder_impl.cpp")
+                    .file("src/nvidia/nvidia_decoder_factory.cpp")
+                    .file("src/nvidia/nvidia_encoder_factory.cpp")
+                    .file("src/nvidia/cuda_context.cpp")
+                    .flag("/wd4819")
+                    .flag("/wd4068");
+
+                // Link CUDA driver API (cu* symbols) and Video Codec API (cuvid* symbols)
+                let cuda_lib_dir = cuda_home.join("lib").join("x64");
+                println!("cargo:rustc-link-search=native={}", cuda_lib_dir.display());
+                println!("cargo:rustc-link-lib=dylib=cuda");
+                // nvcuvid.lib is generated from nvcuvid.dll (not in CUDA Toolkit,
+                // ships with the GPU driver). Bundled in lib/x64/.
+                let nvcuvid_lib_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).join("lib").join("x64");
+                println!("cargo:rustc-link-search=native={}", nvcuvid_lib_dir.display());
+                println!("cargo:rustc-link-lib=dylib=nvcuvid");
+
+                println!("cargo:warning=NVENC support enabled (CUDA found at {})", cuda_home.display());
+            } else {
+                println!("cargo:warning=cuda.h not found at {}; building without NVENC hardware encoding", cuda_include_dir.display());
+            }
         }
         "linux" => {
             println!("cargo:rustc-link-lib=dylib=rt");
@@ -211,7 +296,18 @@ fn main() {
                 }
             }
 
-            if x86 || arm {
+            // Linux NVENC is off by default — opt in with `--features nvenc-linux`.
+            // Without the gate, every Linux consumer of webrtc-sys would hard-fail
+            // unless CUDA Toolkit headers were installed at the expected path, even
+            // when they don't want hardware codecs. Windows NVENC stays always-on
+            // because this fork's whole point (the `nvenc-windows` branch) is to
+            // ship the Windows NVENC pipeline.
+            //
+            // Re-enabling Linux NVENC later is just a matter of building the
+            // consuming crate with `--features webrtc-sys/nvenc-linux` and having
+            // CUDA Toolkit available at $CUDA_HOME or /usr/local/cuda.
+            let nvenc_linux = env::var("CARGO_FEATURE_NVENC_LINUX").is_ok();
+            if nvenc_linux && (x86 || arm) {
                 let cuda_home = PathBuf::from(match env::var("CUDA_HOME") {
                     Ok(p) => p,
                     Err(_) => "/usr/local/cuda".to_owned(),

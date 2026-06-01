@@ -1,6 +1,9 @@
 #ifndef WEBRTC_SYS_NVIDIA_CUDA_CONTEXT_H
 #define WEBRTC_SYS_NVIDIA_CUDA_CONTEXT_H
 
+#ifdef _WIN32
+#include "win_compat.h"
+#endif
 #include <cuda.h>
 
 namespace livekit_ffi {

@@ -1,6 +1,6 @@
 # local_video
 
-Three examples demonstrating capturing frames from a local camera video and publishing to LiveKit, listing camera capabilities, and subscribing to render video in a window.
+Examples demonstrating capturing frames from a local camera video and publishing to LiveKit, listing camera capabilities, subscribing to render video in a window, and showing a low-latency clock for measurement.
 
 **Note:** These examples are intended for **desktop platforms only** (macOS, Linux, Windows).
 You must enable the `desktop` feature when building or running them.
@@ -9,6 +9,7 @@ For smoother local rendering, especially above 720p, run the publisher/subscribe
 - list_devices: enumerate available cameras and their capabilities
 - publisher: capture from a selected camera and publish a video track
 - subscriber: connect to a room, subscribe to video tracks, and display in a window
+- clock: render a high-contrast wall-clock with three millisecond digits and a millisecond grid
 
 LiveKit connection can be provided via flags or environment variables:
 - `--url` or `LIVEKIT_URL`
@@ -26,7 +27,7 @@ Publisher usage:
    --room-name demo \
    --identity cam-1 \
    --simulcast \
-   --h265 \
+   --codec h265 \
    --max-bitrate 1500000 \
    --url https://your.livekit.server \
    --api-key YOUR_KEY \
@@ -83,13 +84,26 @@ List devices usage:
  cargo run -p local_video -F desktop --bin list_devices
 ```
 
+Clock usage:
+```
+ cargo run -p local_video -F desktop --bin clock
+ cargo run --release -p local_video -F desktop --bin clock -- --fullscreen
+```
+
+Clock flags:
+- `--fullscreen`: Start in borderless fullscreen.
+- `--always-on-top`: Keep the clock above normal windows.
+- `--vsync`: Enable vsync for tear-free output. By default the clock uses WGPU with no-vsync presentation and a maximum frame latency of 1 to minimize queuing on macOS.
+
+The clock draws a 3x9 grid below the time. The top row fills from `0` to `9` for the hundreds-of-milliseconds digit, the middle row for tens of milliseconds, and the bottom row for ones of milliseconds.
+
 Publisher flags (in addition to the common connection flags above):
 - `--camera-index <n>`: Camera index to use (default: `0`). Use `--list-cameras` to see available indices.
 - `--test-pattern`: Generate a standard SMPTE 75% color-bar test pattern instead of capturing from a camera. `--camera-index` is ignored when this is set; `--width`, `--height`, and `--fps` still control the output resolution and frame rate.
 - `--width <px>`: Desired capture width (default: `1280`).
 - `--height <px>`: Desired capture height (default: `720`).
 - `--fps <n>`: Desired capture framerate (default: `30`).
-- `--h265`: Use H.265/HEVC encoding if supported (falls back to H.264 on failure).
+- `--codec <codec>`: Video codec to use for publishing: `h264`, `h265`, `vp8`, `vp9`, or `av1` (default: `h264`). H.265 falls back to H.264 on failure.
 - `--simulcast`: Publish simulcast video (multiple layers when the resolution is large enough).
 - `--max-bitrate <bps>`: Max video bitrate for the main (highest) layer in bits per second (e.g. `1500000`).
 - `--attach-timestamp`: Attach the current wall-clock time (microseconds since UNIX epoch) as the user timestamp on each published frame. The subscriber can display this to measure end-to-end latency.
