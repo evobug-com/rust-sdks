@@ -147,26 +147,12 @@ int32_t NvidiaH265EncoderImpl::InitEncode(
   nv_initialize_params_.frameRateDen = 1;
   nv_initialize_params_.bufferFormat = nv_format_;
 
-  // Use Main 10 profile for better quality and HDR support.
-  // NVENC accepts 8-bit input with Main 10 and upscales internally.
-  nv_encode_config_.profileGUID = NV_ENC_HEVC_PROFILE_MAIN10_GUID;
+  nv_encode_config_.profileGUID = NV_ENC_HEVC_PROFILE_MAIN_GUID;
   nv_encode_config_.gopLength = NVENC_INFINITE_GOPLENGTH;
   nv_encode_config_.frameIntervalP = 1;
   nv_encode_config_.rcParams.version = NV_ENC_RC_PARAMS_VER;
   nv_encode_config_.rcParams.rateControlMode = NV_ENC_PARAMS_RC_CBR;
   nv_encode_config_.rcParams.averageBitRate = configuration_.target_bps;
-
-  // Configure HEVC-specific settings for 10-bit + HDR VUI metadata
-  auto& hevcConfig = nv_encode_config_.encodeCodecConfig.hevcConfig;
-  hevcConfig.pixelBitDepthMinus8 = 2;  // 10-bit output
-  // HDR VUI parameters (BT.2020 + PQ transfer)
-  auto& vuiParams = hevcConfig.hevcVUIParameters;
-  vuiParams.videoSignalTypePresentFlag = 1;
-  vuiParams.videoFullRangeFlag = 0;  // Studio range
-  vuiParams.colourDescriptionPresentFlag = 1;
-  vuiParams.colourPrimaries = NV_ENC_VUI_COLOR_PRIMARIES_BT2020;
-  vuiParams.transferCharacteristics = NV_ENC_VUI_TRANSFER_CHARACTERISTIC_SMPTE2084;
-  vuiParams.colourMatrix = NV_ENC_VUI_MATRIX_COEFFS_BT2020_NCL;
   nv_encode_config_.rcParams.vbvBufferSize =
       (nv_encode_config_.rcParams.averageBitRate *
        nv_initialize_params_.frameRateDen /
@@ -378,15 +364,17 @@ void NvidiaH265EncoderImpl::SetRates(
 
   // Actually apply the new bitrate to NVENC via Reconfigure().
   // Without this, the encoder stays at its initial bitrate forever.
+  // Update frameRateNum first so the VBV sizing below uses the new framerate
+  // rather than the stale one.
+  nv_initialize_params_.frameRateNum =
+      static_cast<uint32_t>(parameters.framerate_fps);
+
   nv_encode_config_.rcParams.averageBitRate = target_bps;
   nv_encode_config_.rcParams.vbvBufferSize =
       (target_bps * nv_initialize_params_.frameRateDen /
        nv_initialize_params_.frameRateNum) * 5;
   nv_encode_config_.rcParams.vbvInitialDelay =
       nv_encode_config_.rcParams.vbvBufferSize;
-
-  nv_initialize_params_.frameRateNum =
-      static_cast<uint32_t>(parameters.framerate_fps);
 
   try {
     NV_ENC_RECONFIGURE_PARAMS reconfigure_params = {};

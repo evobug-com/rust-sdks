@@ -443,15 +443,17 @@ void NvidiaH264EncoderImpl::SetRates(
 
   // Actually apply the new bitrate to NVENC via Reconfigure().
   // Without this, the encoder stays at its initial bitrate forever.
+  // Update frameRateNum first so the VBV sizing below uses the new framerate
+  // rather than the stale one.
+  nv_initialize_params_.frameRateNum =
+      static_cast<uint32_t>(parameters.framerate_fps);
+
   nv_encode_config_.rcParams.averageBitRate = target_bps;
   nv_encode_config_.rcParams.vbvBufferSize =
       (target_bps * nv_initialize_params_.frameRateDen /
        nv_initialize_params_.frameRateNum) * 5;
   nv_encode_config_.rcParams.vbvInitialDelay =
       nv_encode_config_.rcParams.vbvBufferSize;
-
-  nv_initialize_params_.frameRateNum =
-      static_cast<uint32_t>(parameters.framerate_fps);
 
   try {
     NV_ENC_RECONFIGURE_PARAMS reconfigure_params = {};

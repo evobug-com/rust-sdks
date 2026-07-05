@@ -1,4 +1,19 @@
+# ============================================================================
+# IMPORTANT: schedule/workflow_dispatch triggers only fire when this workflow
+# file exists on the repository's DEFAULT branch (main). GitHub reads cron and
+# manual-dispatch definitions from the default branch only — a workflow living
+# solely on the nvenc-windows branch will NEVER run. To activate this workflow,
+# this file MUST be merged/copied onto main. It can still operate on the
+# nvenc-windows branch (the checkout below targets it explicitly), but the
+# trigger definition has to live on main to take effect.
+# ============================================================================
+
 name: Sync Upstream
+
+# Force-pushing nvenc-windows with the default GITHUB_TOKEN requires write
+# access; default workflow permissions are read-only and would 403 on push.
+permissions:
+  contents: write
 
 on:
   schedule:
@@ -40,5 +55,18 @@ jobs:
             git rebase --abort
             exit 1
           }
+
+          # Sanity gate: never force-push a rebase that left conflict markers
+          # or a broken workspace. git diff --check catches stray conflict
+          # markers; cargo metadata proves the workspace still parses.
+          git diff --check || {
+            echo "::error::Conflict markers found after rebase — refusing to push"
+            exit 1
+          }
+          cargo metadata --no-deps -q > /dev/null || {
+            echo "::error::Workspace does not parse after rebase — refusing to push"
+            exit 1
+          }
+
           git push origin nvenc-windows --force-with-lease
           echo "Synced ${{ steps.check.outputs.behind }} commits from upstream"

@@ -14,6 +14,8 @@
 
 use std::path::Path;
 use std::path::PathBuf;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::{env, path, process::Command};
 
 fn main() {
@@ -38,24 +40,49 @@ fn main() {
                 if !vs_path.is_empty() {
                     let vcvarsall = PathBuf::from(&vs_path).join(r"VC\Auxiliary\Build\vcvarsall.bat");
                     if vcvarsall.exists() {
-                        if let Ok(env_output) = Command::new("cmd")
-                            .args(["/c", &format!("\"{}\" x64 >NUL 2>&1 && set", vcvarsall.display())])
-                            .output()
-                        {
+                        // Build the cmd invocation with raw_arg on Windows so the
+                        // embedded quotes around the (space-containing) vcvarsall
+                        // path reach cmd.exe verbatim. Rust std's normal .arg()
+                        // escaping turns the quotes into \" which cmd.exe cannot
+                        // parse, so vcvarsall silently fails to run and zero vars
+                        // get imported. `call` ensures the batch file returns
+                        // control so `set` runs afterwards.
+                        let mut cmd = Command::new("cmd");
+                        #[cfg(windows)]
+                        cmd.raw_arg(format!("/c call \"{}\" x64 >NUL 2>&1 && set", vcvarsall.display()));
+                        #[cfg(not(windows))]
+                        cmd.args(["/c", &format!("call \"{}\" x64 >NUL 2>&1 && set", vcvarsall.display())]);
+                        if let Ok(env_output) = cmd.output() {
                             let stdout = String::from_utf8_lossy(&env_output.stdout);
+                            // Track whether vcvarsall actually produced a real MSVC
+                            // environment before we claim success.
+                            let mut imported_expected_var = false;
                             for line in stdout.lines() {
                                 if let Some((key, value)) = line.split_once('=') {
                                     match key {
                                         "INCLUDE" | "LIB" | "LIBPATH" | "VCINSTALLDIR" |
                                         "WindowsSdkDir" | "UCRTVersion" | "VCToolsVersion" |
                                         "WindowsSDKVersion" | "PATH" => {
+                                            if key == "INCLUDE" || key == "VCINSTALLDIR" {
+                                                imported_expected_var = true;
+                                            }
                                             env::set_var(key, value);
                                         }
                                         _ => {}
                                     }
                                 }
                             }
-                            println!("cargo:warning=Auto-configured Visual Studio environment from {}", vs_path);
+                            if env_output.status.success() && imported_expected_var {
+                                println!("cargo:warning=Auto-configured Visual Studio environment from {}", vs_path);
+                            } else {
+                                println!(
+                                    "cargo:warning=vcvarsall import failed (status: {}, path tried: {}); \
+                                     Visual Studio environment was NOT configured. Run vcvarsall x64 \
+                                     manually or open a Developer Command Prompt before building.",
+                                    env_output.status,
+                                    vcvarsall.display()
+                                );
+                            }
                         }
                     }
                 }
@@ -247,6 +274,26 @@ fn main() {
                 println!("cargo:rustc-link-search=native={}", nvcuvid_lib_dir.display());
                 println!("cargo:rustc-link-lib=dylib=nvcuvid");
 
+                // Delay-load the NVIDIA driver DLLs so the process can start on
+                // machines without an NVIDIA driver installed. Without this the
+                // loader resolves nvcuda.dll/nvcuvid.dll at startup and aborts the
+                // whole process with STATUS_DLL_NOT_FOUND, defeating the runtime
+                // probes (IsSupported / IsNvdecRuntimeAvailable) that are meant to
+                // gracefully report "no NVENC/NVDEC" instead of crashing.
+                //
+                // cuda.lib is the CUDA driver API import lib -> resolves to nvcuda.dll.
+                // nvcuvid.lib (bundled, built from lib/x64/nvcuvid.def whose LIBRARY
+                // name is "nvcuvid") -> resolves to nvcuvid.dll.
+                //
+                // These cargo:rustc-link-arg lines are forwarded by cargo to the
+                // final link step of downstream cdylib/bin targets that consume
+                // webrtc-sys (the same mechanism the macOS branch uses for -ObjC).
+                // delayimp provides __delayLoadHelper2 which resolves the imports
+                // lazily on first call.
+                println!("cargo:rustc-link-lib=dylib=delayimp");
+                println!("cargo:rustc-link-arg=/DELAYLOAD:nvcuda.dll");
+                println!("cargo:rustc-link-arg=/DELAYLOAD:nvcuvid.dll");
+
                 println!("cargo:warning=NVENC support enabled (CUDA found at {})", cuda_home.display());
             } else {
                 println!("cargo:warning=cuda.h not found at {}; building without NVENC hardware encoding", cuda_include_dir.display());
@@ -398,6 +445,19 @@ fn main() {
                     );
                 } else {
                     println!("cargo:warning=cuda.h not found; building without hardware accelerated video codec support for NVidia GPUs");
+                }
+            } else if x86 || arm {
+                // NVENC is gated off (nvenc-linux feature disabled). If CUDA is
+                // actually present, emit a visible signal so users who previously
+                // relied on always-on Linux NVENC understand why hardware codecs
+                // silently disappeared. Cheap existence check only — mirrors the
+                // header path used above and does nothing when CUDA is absent.
+                let cuda_home = PathBuf::from(match env::var("CUDA_HOME") {
+                    Ok(p) => p,
+                    Err(_) => "/usr/local/cuda".to_owned(),
+                });
+                if cuda_home.join("include").join("cuda.h").exists() {
+                    println!("cargo:warning=CUDA detected but 'nvenc-linux' feature is disabled; building without NVENC hardware codecs");
                 }
             }
 
