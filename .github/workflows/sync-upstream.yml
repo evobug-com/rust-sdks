@@ -1,0 +1,72 @@
+# ============================================================================
+# IMPORTANT: schedule/workflow_dispatch triggers only fire when this workflow
+# file exists on the repository's DEFAULT branch (main). GitHub reads cron and
+# manual-dispatch definitions from the default branch only — a workflow living
+# solely on the nvenc-windows branch will NEVER run. To activate this workflow,
+# this file MUST be merged/copied onto main. It can still operate on the
+# nvenc-windows branch (the checkout below targets it explicitly), but the
+# trigger definition has to live on main to take effect.
+# ============================================================================
+
+name: Sync Upstream
+
+# Force-pushing nvenc-windows with the default GITHUB_TOKEN requires write
+# access; default workflow permissions are read-only and would 403 on push.
+permissions:
+  contents: write
+
+on:
+  schedule:
+    - cron: "0 8 * * 1" # Every Monday 08:00 UTC
+  workflow_dispatch: # Manual trigger
+
+jobs:
+  sync:
+    name: Rebase NVENC changes onto latest upstream
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: nvenc-windows
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream https://github.com/livekit/rust-sdks.git
+          git fetch upstream main
+
+      - name: Check for new upstream commits
+        id: check
+        run: |
+          BEHIND=$(git rev-list HEAD..upstream/main --count)
+          echo "behind=$BEHIND" >> "$GITHUB_OUTPUT"
+          echo "Upstream has $BEHIND new commits"
+
+      - name: Rebase onto upstream
+        if: steps.check.outputs.behind != '0'
+        run: |
+          git rebase upstream/main || {
+            echo "::error::Rebase failed — manual resolution needed"
+            git rebase --abort
+            exit 1
+          }
+
+          # Sanity gate: never force-push a rebase that left conflict markers
+          # or a broken workspace. git diff --check catches stray conflict
+          # markers; cargo metadata proves the workspace still parses.
+          git diff --check || {
+            echo "::error::Conflict markers found after rebase — refusing to push"
+            exit 1
+          }
+          cargo metadata --no-deps -q > /dev/null || {
+            echo "::error::Workspace does not parse after rebase — refusing to push"
+            exit 1
+          }
+
+          git push origin nvenc-windows --force-with-lease
+          echo "Synced ${{ steps.check.outputs.behind }} commits from upstream"
