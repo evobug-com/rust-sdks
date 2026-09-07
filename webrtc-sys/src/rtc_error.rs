@@ -79,16 +79,20 @@ impl ffi::RtcError {
     /// Returns `None` if the input is shorter than the fixed header or the
     /// header bytes aren't valid hex. Discriminants outside the known
     /// variants for `RtcErrorType` / `RtcErrorDetailType` fall back to
-    /// `None` for the affected field instead of being `transmute`d into
+    /// `InternalError` / `None` instead of being `transmute`d into
     /// the enum (which is instant UB and what nightly's
     /// `ptr::copy_nonoverlapping` precondition check was firing on).
     pub fn parse(value: &str) -> Option<Self> {
-        if value.len() < 22 {
+        let header = value.get(..22)?;
+        if !header.is_ascii() {
             return None;
         }
         let error_type = u32::from_str_radix(&value[0..8], 16).ok()?;
         let error_detail = u32::from_str_radix(&value[8..16], 16).ok()?;
         let has_scp_cause_code = u8::from_str_radix(&value[16..18], 16).ok()?;
+        if has_scp_cause_code > 1 {
+            return None;
+        }
         let sctp_cause_code = u16::from_str_radix(&value[18..22], 16).ok()?;
         let message = String::from(&value[22..]);
 
@@ -101,14 +105,20 @@ impl ffi::RtcError {
         })
     }
 
-    /// Backwards-compatible wrapper for callers that already trust the input
-    /// is well-formed.
+    /// Decode a native exception, preserving malformed input as an internal
+    /// error rather than panicking while reporting the original failure.
     ///
     /// # Safety
     /// Marked `unsafe` purely for source-compat with prior callers; the body
     /// no longer relies on caller-upheld invariants.
     pub unsafe fn from(value: &str) -> Self {
-        Self::parse(value).expect("malformed serialized RtcError")
+        Self::parse(value).unwrap_or_else(|| Self {
+            error_type: ffi::RtcErrorType::InternalError,
+            message: value.to_owned(),
+            error_detail: ffi::RtcErrorDetailType::None,
+            has_sctp_cause_code: false,
+            sctp_cause_code: 0,
+        })
     }
 
     pub fn ok(&self) -> bool {
@@ -130,7 +140,7 @@ fn rtc_error_type_from_u32(value: u32) -> ffi::RtcErrorType {
         9 => ffi::RtcErrorType::ResourceExhausted,
         10 => ffi::RtcErrorType::InternalError,
         11 => ffi::RtcErrorType::OperationErrorWithData,
-        _ => ffi::RtcErrorType::None,
+        _ => ffi::RtcErrorType::InternalError,
     }
 }
 
@@ -159,6 +169,29 @@ impl Display for ffi::RtcError {
 #[cfg(test)]
 mod tests {
     use crate::rtc_error::ffi::{RtcError, RtcErrorDetailType, RtcErrorType};
+
+    #[test]
+    fn malformed_native_errors_remain_errors_without_panicking() {
+        for message in
+            ["", "peer connection closed", "not a serialized native error", "éééééééééééé"]
+        {
+            // SAFETY: from is a compatibility wrapper with no caller invariants.
+            let error = unsafe { RtcError::from(message) };
+            assert_eq!(error.error_type, RtcErrorType::InternalError);
+            assert_eq!(error.message, message);
+            assert!(!error.ok());
+        }
+        assert!(RtcError::parse("0000000a00000001020018invalid flag").is_none());
+        let unknown = RtcError::parse("ffffffff00000000000000unknown type").unwrap();
+        assert_eq!(unknown.error_type, RtcErrorType::InternalError);
+        assert!(!unknown.ok());
+        let valid = RtcError::parse("0000000a00000001010018native failure ✓").unwrap();
+        assert_eq!(valid.error_type, RtcErrorType::InternalError);
+        assert_eq!(valid.error_detail, RtcErrorDetailType::DataChannelFailure);
+        assert!(valid.has_sctp_cause_code);
+        assert_eq!(valid.sctp_cause_code, 24);
+        assert_eq!(valid.message, "native failure ✓");
+    }
 
     #[cxx::bridge(namespace = "livekit_ffi")]
     pub mod ffi {
