@@ -25,8 +25,27 @@ VideoFrameBuffer::VideoFrameBuffer(
     webrtc::scoped_refptr<webrtc::VideoFrameBuffer> buffer)
     : buffer_(std::move(buffer)) {}
 
+// Mapped, not cast: libwebrtc's enum has kI210 and kI410 between kI010 and
+// kNV12, so a cast turned NV12 into a value the bridge's enum lacks and I210
+// into NV12. The buffers Rust has no view of go through the generic native
+// path, which converts with ToI420.
 VideoFrameBufferType VideoFrameBuffer::buffer_type() const {
-  return static_cast<VideoFrameBufferType>(buffer_->type());
+  switch (buffer_->type()) {
+    case webrtc::VideoFrameBuffer::Type::kI420:
+      return VideoFrameBufferType::I420;
+    case webrtc::VideoFrameBuffer::Type::kI420A:
+      return VideoFrameBufferType::I420A;
+    case webrtc::VideoFrameBuffer::Type::kI422:
+      return VideoFrameBufferType::I422;
+    case webrtc::VideoFrameBuffer::Type::kI444:
+      return VideoFrameBufferType::I444;
+    case webrtc::VideoFrameBuffer::Type::kI010:
+      return VideoFrameBufferType::I010;
+    case webrtc::VideoFrameBuffer::Type::kNV12:
+      return VideoFrameBufferType::NV12;
+    default:
+      return VideoFrameBufferType::Native;
+  }
 }
 
 unsigned int VideoFrameBuffer::width() const {
