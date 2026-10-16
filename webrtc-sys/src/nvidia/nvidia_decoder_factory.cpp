@@ -3,9 +3,17 @@
 #include <modules/video_coding/codecs/h264/include/h264.h>
 
 #include <cstdlib>
-#include <dlfcn.h>
 #include <memory>
 #include <mutex>
+
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#else
+#include <dlfcn.h>
+#endif
 
 #include "cuda_context.h"
 #include "h264_decoder_impl.h"
@@ -34,11 +42,26 @@ void LogNvdecDisabledByEnv() {
 
 constexpr char kSdpKeyNameCodecImpl[] = "implementation_name";
 constexpr char kCodecName[] = "NvCodec";
+#if defined(_WIN32)
+constexpr char kNvdecRuntimeLibrary[] = "nvcuvid.dll";
+#else
 constexpr char kNvdecRuntimeLibrary[] = "libnvcuvid.so.1";
+#endif
 
 namespace {
 
 bool IsNvdecRuntimeAvailable() {
+#if defined(_WIN32)
+  HMODULE hModule = ::LoadLibraryA(kNvdecRuntimeLibrary);
+  if (!hModule) {
+    RTC_LOG(LS_WARNING) << "NVDEC runtime library (" << kNvdecRuntimeLibrary
+                        << ") not found, hardware decoding unavailable.";
+    return false;
+  }
+
+  ::FreeLibrary(hModule);
+  return true;
+#else
   void* hModule = dlopen(kNvdecRuntimeLibrary, RTLD_LAZY | RTLD_LOCAL);
   if (!hModule) {
     RTC_LOG(LS_WARNING) << "NVDEC runtime library (" << kNvdecRuntimeLibrary
@@ -48,6 +71,7 @@ bool IsNvdecRuntimeAvailable() {
 
   dlclose(hModule);
   return true;
+#endif
 }
 
 }  // namespace

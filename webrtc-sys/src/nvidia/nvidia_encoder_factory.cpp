@@ -16,7 +16,24 @@
 #include "nvEncodeAPI.h"
 #include "rtc_base/logging.h"
 
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+using NvEncLibHandle = HMODULE;
+#define NVENC_LIB_OPEN() ::LoadLibraryW(L"nvEncodeAPI64.dll")
+#define NVENC_LIB_SYM(h, name) ((void*)::GetProcAddress((h), (name)))
+#define NVENC_LIB_CLOSE(h) ::FreeLibrary((h))
+#define NVENC_LIB_NAME "nvEncodeAPI64.dll"
+#else
 #include <dlfcn.h>
+using NvEncLibHandle = void*;
+#define NVENC_LIB_OPEN() ::dlopen("libnvidia-encode.so.1", RTLD_LAZY)
+#define NVENC_LIB_SYM(h, name) ::dlsym((h), (name))
+#define NVENC_LIB_CLOSE(h) ::dlclose((h))
+#define NVENC_LIB_NAME "libnvidia-encode.so.1"
+#endif
 
 namespace webrtc {
 
@@ -125,18 +142,18 @@ NvencProbeResult ProbeNvencSupport() {
   // CUDA being available does NOT imply NVENC is present. Compute-only GPUs
   // (H100, A100, etc.) have full CUDA support but no encode hardware.
   // Probe the NVENC library and try to open a session to be sure.
-  void* hModule = dlopen("libnvidia-encode.so.1", RTLD_LAZY);
+  NvEncLibHandle hModule = NVENC_LIB_OPEN();
   if (!hModule) {
-    RTC_LOG(LS_WARNING) << "NVENC library (libnvidia-encode.so.1) not found, "
-                           "hardware encoding unavailable.";
+    RTC_LOG(LS_WARNING) << "NVENC library (" << NVENC_LIB_NAME
+                        << ") not found, hardware encoding unavailable.";
     return result;
   }
 
   auto NvEncodeAPIGetMaxSupportedVersion =
-      (NVENCSTATUS(NVENCAPI*)(uint32_t*))dlsym(
+      (NVENCSTATUS(NVENCAPI*)(uint32_t*))NVENC_LIB_SYM(
           hModule, "NvEncodeAPIGetMaxSupportedVersion");
   auto NvEncodeAPICreateInstance =
-      (NVENCSTATUS(NVENCAPI*)(NV_ENCODE_API_FUNCTION_LIST*))dlsym(
+      (NVENCSTATUS(NVENCAPI*)(NV_ENCODE_API_FUNCTION_LIST*))NVENC_LIB_SYM(
           hModule, "NvEncodeAPICreateInstance");
 
   NV_ENCODE_API_FUNCTION_LIST fnList = {NV_ENCODE_API_FUNCTION_LIST_VER};
@@ -218,7 +235,7 @@ NvencProbeResult ProbeNvencSupport() {
   if (cuCtx) {
     cuCtxDestroy(cuCtx);
   }
-  dlclose(hModule);
+  NVENC_LIB_CLOSE(hModule);
 
   return result;
 }
