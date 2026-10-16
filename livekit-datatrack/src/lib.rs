@@ -14,6 +14,19 @@
 
 #![doc = include_str!("../README.md")]
 
+/// Implements `From<T>` for each listed single-field tuple variant, replacing
+/// `from_variants::FromVariants`, whose macro pins `darling 0.14` and `syn 1`.
+macro_rules! impl_from_variants {
+    ($enum:ty { $($variant:ident($inner:ty)),+ $(,)? }) => {
+        $(
+            impl From<$inner> for $enum {
+                fn from(value: $inner) -> Self {
+                    Self::$variant(value)
+                }
+            }
+        )+
+    };
+}
 /// Common types for local and remote tracks.
 mod track;
 

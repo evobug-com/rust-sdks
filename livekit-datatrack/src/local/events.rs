@@ -18,12 +18,11 @@ use crate::{
     schema::{DataTrackFrameEncoding, DataTrackSchemaId},
 };
 use bytes::Bytes;
-use from_variants::FromVariants;
 use std::sync::Arc;
 use tokio::sync::oneshot;
 
 /// An external event handled by [`Manager`](super::manager::Manager).
-#[derive(Debug, FromVariants)]
+#[derive(Debug)]
 pub enum InputEvent {
     PublishRequest(PublishRequest),
     PublishCancelled(PublishCancelled),
@@ -41,14 +40,29 @@ pub enum InputEvent {
     Shutdown,
 }
 
+impl_from_variants!(InputEvent {
+    PublishRequest(PublishRequest),
+    PublishCancelled(PublishCancelled),
+    QueryPublished(QueryPublished),
+    UnpublishRequest(UnpublishRequest),
+    SfuPublishResponse(SfuPublishResponse),
+    SfuUnpublishResponse(SfuUnpublishResponse),
+});
+
 /// An event produced by [`Manager`](super::manager::Manager) requiring external action.
-#[derive(Debug, FromVariants)]
+#[derive(Debug)]
 pub enum OutputEvent {
     SfuPublishRequest(SfuPublishRequest),
     SfuUnpublishRequest(SfuUnpublishRequest),
     /// Serialized packets are ready to be sent over the transport.
     PacketsAvailable(Vec<Bytes>),
 }
+
+impl_from_variants!(OutputEvent {
+    SfuPublishRequest(SfuPublishRequest),
+    SfuUnpublishRequest(SfuUnpublishRequest),
+    PacketsAvailable(Vec<Bytes>),
+});
 
 // MARK: - Input events
 

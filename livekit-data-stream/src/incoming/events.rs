@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use from_variants::FromVariants;
 use livekit_common::ParticipantIdentity;
 
 use crate::{
@@ -34,7 +33,6 @@ impl PacketReceived {
 /// An event fed into [`IncomingStreamManager::run`] by the host crate. Each corresponds to an
 /// inbound data-stream packet (or a lifecycle signal) and carries everything the manager needs to
 /// process it without reaching back into room state.
-#[derive(FromVariants)]
 pub enum InputEvent {
     PacketReceived(PacketReceived),
     /// Abort every open stream sent by this participant (they disconnected mid-send).
@@ -45,12 +43,16 @@ pub enum InputEvent {
     /// Reply with the number of currently open streams (registered by a header and awaiting more
     /// packets). Processed in order with the other events, so the answer reflects everything
     /// enqueued before it.
-    #[from_variants(skip)]
     QueryOpenStreamCount(tokio::sync::oneshot::Sender<usize>),
     /// Stop the run loop, aborting every still-open stream as [`InputEvent::AbortAllStreams`]
     /// does.
     Shutdown,
 }
+
+impl_from_variants!(InputEvent {
+    PacketReceived(PacketReceived),
+    AbortStreamsFrom(ParticipantIdentity),
+});
 
 /// A new stream was opened; its reader should be delivered to the application (or routed
 /// internally for reserved topics). Carries the sender's identity.
@@ -99,10 +101,16 @@ pub struct TrailerReceived {
 
 /// An event emitted by [`IncomingStreamManager::run`] for the host crate to surface. The manager
 /// stays decoupled from `RoomEvent`; the host maps these onto its own event types.
-#[derive(FromVariants)]
 pub enum OutputEvent {
     StreamOpened(StreamOpened),
     StreamClosed(StreamClosed),
     ChunkReceived(ChunkReceived),
     TrailerReceived(TrailerReceived),
 }
+
+impl_from_variants!(OutputEvent {
+    StreamOpened(StreamOpened),
+    StreamClosed(StreamClosed),
+    ChunkReceived(ChunkReceived),
+    TrailerReceived(TrailerReceived),
+});

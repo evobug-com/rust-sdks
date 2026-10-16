@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use from_variants::FromVariants;
 use livekit_common::EncryptionType;
 use livekit_protocol::data_stream as proto;
 use std::collections::HashMap;
@@ -111,11 +110,16 @@ impl From<ByteHeader> for proto::ByteHeader {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, FromVariants)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ContentHeader {
     TextHeader(TextHeader),
     ByteHeader(ByteHeader),
 }
+
+impl_from_variants!(ContentHeader {
+    TextHeader(TextHeader),
+    ByteHeader(ByteHeader),
+});
 
 impl From<proto::header::ContentHeader> for ContentHeader {
     fn from(value: proto::header::ContentHeader) -> Self {

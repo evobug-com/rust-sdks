@@ -20,12 +20,11 @@ use crate::{
     packet::Handle,
 };
 use bytes::Bytes;
-use from_variants::FromVariants;
 use std::collections::HashMap;
 use tokio::sync::{broadcast, oneshot};
 
 /// An external event handled by [`Manager`](super::manager::Manager).
-#[derive(Debug, FromVariants)]
+#[derive(Debug)]
 pub enum InputEvent {
     SubscribeRequest(SubscribeRequest),
     UnsubscribeRequest(UnsubscribeRequest),
@@ -44,13 +43,28 @@ pub enum InputEvent {
     Shutdown,
 }
 
+impl_from_variants!(InputEvent {
+    SubscribeRequest(SubscribeRequest),
+    UnsubscribeRequest(UnsubscribeRequest),
+    SfuPublicationUpdates(SfuPublicationUpdates),
+    SfuSubscriberHandles(SfuSubscriberHandles),
+    SetPipelineOptions(SetPipelineOptions),
+    PacketReceived(Bytes),
+});
+
 /// An event produced by [`Manager`](super::manager::Manager) requiring external action.
-#[derive(Debug, FromVariants)]
+#[derive(Debug)]
 pub enum OutputEvent {
     SfuUpdateSubscription(SfuUpdateSubscription),
     TrackPublished(TrackPublished),
     TrackUnpublished(TrackUnpublished),
 }
+
+impl_from_variants!(OutputEvent {
+    SfuUpdateSubscription(SfuUpdateSubscription),
+    TrackPublished(TrackPublished),
+    TrackUnpublished(TrackUnpublished),
+});
 
 // MARK: - Input events
 

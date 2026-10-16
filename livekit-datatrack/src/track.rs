@@ -16,7 +16,6 @@ use crate::{
     packet::Handle,
     schema::{DataTrackFrameEncoding, DataTrackSchemaId},
 };
-use from_variants::FromVariants;
 use std::{
     fmt::Display,
     marker::PhantomData,
@@ -33,11 +32,16 @@ pub struct DataTrack<L> {
     pub(crate) _location: PhantomData<L>,
 }
 
-#[derive(Debug, Clone, FromVariants)]
+#[derive(Debug, Clone)]
 pub(crate) enum DataTrackInner {
     Local(crate::local::LocalTrackInner),
     Remote(crate::remote::RemoteTrackInner),
 }
+
+impl_from_variants!(DataTrackInner {
+    Local(crate::local::LocalTrackInner),
+    Remote(crate::remote::RemoteTrackInner),
+});
 
 impl<L> DataTrack<L> {
     /// Information about the data track.

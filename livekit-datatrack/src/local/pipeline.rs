@@ -19,7 +19,6 @@ use crate::{
     local::packetizer::PacketizerError,
     packet::{self, Extensions, Packet, UserTimestampExt},
 };
-use from_variants::FromVariants;
 use std::sync::Arc;
 use thiserror::Error;
 /// Options for creating a [`Pipeline`].
@@ -34,12 +33,12 @@ pub(super) struct Pipeline {
     packetizer: Packetizer,
 }
 
-#[derive(Debug, Error, FromVariants)]
+#[derive(Debug, Error)]
 pub(super) enum PipelineError {
     #[error(transparent)]
-    Packetizer(PacketizerError),
+    Packetizer(#[from] PacketizerError),
     #[error(transparent)]
-    Encryption(EncryptionError),
+    Encryption(#[from] EncryptionError),
 }
 
 impl Pipeline {
