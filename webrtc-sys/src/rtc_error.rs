@@ -78,8 +78,9 @@ impl ffi::RtcError {
     ///
     /// Returns `None` if the input is shorter than the fixed header or the
     /// header bytes aren't valid hex. Discriminants outside the known
-    /// variants for `RtcErrorType` / `RtcErrorDetailType` fall back to
-    /// `None` for the affected field instead of being `transmute`d into
+    /// variants fall back to `InternalError` (for `RtcErrorType`, so an
+    /// unknown failure is never reported as success) or `None` (for
+    /// `RtcErrorDetailType`) instead of being `transmute`d into
     /// the enum (which is instant UB and what nightly's
     /// `ptr::copy_nonoverlapping` precondition check was firing on).
     pub fn parse(value: &str) -> Option<Self> {
@@ -89,6 +90,9 @@ impl ffi::RtcError {
         let error_type = u32::from_str_radix(value.get(0..8)?, 16).ok()?;
         let error_detail = u32::from_str_radix(value.get(8..16)?, 16).ok()?;
         let has_scp_cause_code = u8::from_str_radix(value.get(16..18)?, 16).ok()?;
+        if has_scp_cause_code > 1 {
+            return None;
+        }
         let sctp_cause_code = u16::from_str_radix(value.get(18..22)?, 16).ok()?;
         let message = String::from(value.get(22..)?);
 
@@ -107,15 +111,17 @@ impl ffi::RtcError {
     /// In practice C++ can hand us a string that doesn't match the format,
     /// for example an empty `cxx::Exception` "what" on participant
     /// disconnect (see #944). Falling through to `expect` panicked the
-    /// caller's task. Now we fall back to a generic error and stash the raw
+    /// caller's task. Now we fall back to an internal error and stash the raw
     /// string in `message` so the caller can still see what came through.
+    /// The input reached us as a native exception, so it is never classified
+    /// as success.
     ///
     /// # Safety
     /// Marked `unsafe` purely for source-compat with prior callers; the body
     /// no longer relies on caller-upheld invariants.
     pub unsafe fn from(value: &str) -> Self {
         Self::parse(value).unwrap_or_else(|| Self {
-            error_type: ffi::RtcErrorType::None,
+            error_type: ffi::RtcErrorType::InternalError,
             error_detail: ffi::RtcErrorDetailType::None,
             has_sctp_cause_code: false,
             sctp_cause_code: 0,
@@ -142,7 +148,7 @@ fn rtc_error_type_from_u32(value: u32) -> ffi::RtcErrorType {
         9 => ffi::RtcErrorType::ResourceExhausted,
         10 => ffi::RtcErrorType::InternalError,
         11 => ffi::RtcErrorType::OperationErrorWithData,
-        _ => ffi::RtcErrorType::None,
+        _ => ffi::RtcErrorType::InternalError,
     }
 }
 
@@ -204,7 +210,8 @@ mod tests {
                 assert!(RtcError::parse(&input).is_none(), "offset={offset}, symbol={symbol}");
                 // SAFETY: `from` has no caller invariants and must fall back for malformed input.
                 let error = unsafe { RtcError::from(&input) };
-                assert_eq!(error.error_type, RtcErrorType::None);
+                assert_eq!(error.error_type, RtcErrorType::InternalError);
+                assert!(!error.ok());
                 assert_eq!(error.message, input);
             }
         }
@@ -219,11 +226,31 @@ mod tests {
     #[test]
     fn malformed_input_does_not_panic() {
         let error = unsafe { RtcError::from("") };
-        assert_eq!(error.error_type, RtcErrorType::None);
+        assert_eq!(error.error_type, RtcErrorType::InternalError);
+        assert!(!error.ok());
         assert!(error.message.is_empty());
 
         let error = unsafe { RtcError::from("not hex at all, just words") };
-        assert_eq!(error.error_type, RtcErrorType::None);
+        assert_eq!(error.error_type, RtcErrorType::InternalError);
+        assert!(!error.ok());
         assert_eq!(error.message, "not hex at all, just words");
+    }
+
+    /// A header with an out-of-range SCTP flag is malformed, and an unknown
+    /// error type is still an error.
+    #[test]
+    fn unknown_header_values_remain_errors() {
+        assert!(RtcError::parse("0000000a00000001020018invalid flag").is_none());
+
+        let unknown = RtcError::parse("ffffffff00000000000000unknown type").unwrap();
+        assert_eq!(unknown.error_type, RtcErrorType::InternalError);
+        assert!(!unknown.ok());
+
+        let valid = RtcError::parse("0000000a00000001010018native failure ✓").unwrap();
+        assert_eq!(valid.error_type, RtcErrorType::InternalError);
+        assert_eq!(valid.error_detail, RtcErrorDetailType::DataChannelFailure);
+        assert!(valid.has_sctp_cause_code);
+        assert_eq!(valid.sctp_cause_code, 24);
+        assert_eq!(valid.message, "native failure ✓");
     }
 }
