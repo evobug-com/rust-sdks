@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::path::Path;
-use std::path::PathBuf;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
+use std::path::Path;
+use std::path::PathBuf;
 use std::{env, path, process::Command};
 
 fn main() {
@@ -30,15 +30,16 @@ fn main() {
     // conflicts with WebRTC+CUDA headers. Running vcvarsall first fixes this.
     if target_os == "windows" && env::var("VCINSTALLDIR").is_err() {
         println!("cargo:warning=Setting up Visual Studio environment automatically...");
-        let vswhere = Path::new(r"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe");
+        let vswhere =
+            Path::new(r"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe");
         if vswhere.exists() {
-            if let Ok(output) = Command::new(vswhere)
-                .args(["-latest", "-property", "installationPath"])
-                .output()
+            if let Ok(output) =
+                Command::new(vswhere).args(["-latest", "-property", "installationPath"]).output()
             {
                 let vs_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
                 if !vs_path.is_empty() {
-                    let vcvarsall = PathBuf::from(&vs_path).join(r"VC\Auxiliary\Build\vcvarsall.bat");
+                    let vcvarsall =
+                        PathBuf::from(&vs_path).join(r"VC\Auxiliary\Build\vcvarsall.bat");
                     if vcvarsall.exists() {
                         // Build the cmd invocation with raw_arg on Windows so the
                         // embedded quotes around the (space-containing) vcvarsall
@@ -49,9 +50,15 @@ fn main() {
                         // control so `set` runs afterwards.
                         let mut cmd = Command::new("cmd");
                         #[cfg(windows)]
-                        cmd.raw_arg(format!("/c call \"{}\" x64 >NUL 2>&1 && set", vcvarsall.display()));
+                        cmd.raw_arg(format!(
+                            "/c call \"{}\" x64 >NUL 2>&1 && set",
+                            vcvarsall.display()
+                        ));
                         #[cfg(not(windows))]
-                        cmd.args(["/c", &format!("call \"{}\" x64 >NUL 2>&1 && set", vcvarsall.display())]);
+                        cmd.args([
+                            "/c",
+                            &format!("call \"{}\" x64 >NUL 2>&1 && set", vcvarsall.display()),
+                        ]);
                         if let Ok(env_output) = cmd.output() {
                             let stdout = String::from_utf8_lossy(&env_output.stdout);
                             // Track whether vcvarsall actually produced a real MSVC
@@ -60,9 +67,9 @@ fn main() {
                             for line in stdout.lines() {
                                 if let Some((key, value)) = line.split_once('=') {
                                     match key {
-                                        "INCLUDE" | "LIB" | "LIBPATH" | "VCINSTALLDIR" |
-                                        "WindowsSdkDir" | "UCRTVersion" | "VCToolsVersion" |
-                                        "WindowsSDKVersion" | "PATH" => {
+                                        "INCLUDE" | "LIB" | "LIBPATH" | "VCINSTALLDIR"
+                                        | "WindowsSdkDir" | "UCRTVersion" | "VCToolsVersion"
+                                        | "WindowsSDKVersion" | "PATH" => {
                                             if key == "INCLUDE" || key == "VCINSTALLDIR" {
                                                 imported_expected_var = true;
                                             }
@@ -225,15 +232,16 @@ fn main() {
             //println!("cargo:rustc-link-lib=dylib=va");
             //println!("cargo:rustc-link-lib=dylib=va_win32");
 
-            builder
-                .flag("/std:c++20")
-                .flag("/EHsc");
+            builder.flag("/std:c++20").flag("/EHsc");
 
             // NVIDIA NVENC hardware encoding support (requires CUDA Toolkit headers).
             // Compiled as a SEPARATE static library to avoid winsock.h/winsock2.h
             // conflicts between Chromium's libc++ headers and NvCodec headers.
             let cuda_home = PathBuf::from(env::var("CUDA_HOME").unwrap_or_else(|_| {
-                for ver in ["v13.2", "v13.1", "v13.0", "v12.9", "v12.8", "v12.7", "v12.6", "v12.5", "v12.4", "v12.3", "v12.2", "v12.1", "v12.0", "v11.8"] {
+                for ver in [
+                    "v13.2", "v13.1", "v13.0", "v12.9", "v12.8", "v12.7", "v12.6", "v12.5",
+                    "v12.4", "v12.3", "v12.2", "v12.1", "v12.0", "v11.8",
+                ] {
                     let p = format!("C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\{ver}");
                     if PathBuf::from(&p).join("include").join("cuda.h").exists() {
                         return p;
@@ -274,7 +282,8 @@ fn main() {
                 println!("cargo:rustc-link-lib=dylib=cuda");
                 // nvcuvid.lib is generated from nvcuvid.dll (not in CUDA Toolkit,
                 // ships with the GPU driver). Bundled in lib/x64/.
-                let nvcuvid_lib_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).join("lib").join("x64");
+                let nvcuvid_lib_dir =
+                    PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).join("lib").join("x64");
                 println!("cargo:rustc-link-search=native={}", nvcuvid_lib_dir.display());
                 println!("cargo:rustc-link-lib=dylib=nvcuvid");
 
@@ -298,7 +307,10 @@ fn main() {
                 println!("cargo:rustc-link-arg=/DELAYLOAD:nvcuda.dll");
                 println!("cargo:rustc-link-arg=/DELAYLOAD:nvcuvid.dll");
 
-                println!("cargo:warning=NVENC support enabled (CUDA found at {})", cuda_home.display());
+                println!(
+                    "cargo:warning=NVENC support enabled (CUDA found at {})",
+                    cuda_home.display()
+                );
             } else {
                 println!("cargo:warning=cuda.h not found at {}; building without NVENC hardware encoding", cuda_include_dir.display());
             }
