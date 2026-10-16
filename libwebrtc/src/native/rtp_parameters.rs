@@ -240,7 +240,7 @@ impl From<RtpEncodingParameters> for sys_rp::ffi::RtpEncodingParameters {
         Self {
             active: value.active,
             has_max_bitrate_bps: value.max_bitrate.is_some(),
-            max_bitrate_bps: value.max_bitrate.unwrap_or_default() as i32,
+            max_bitrate_bps: value.max_bitrate.unwrap_or_default().min(i32::MAX as u64) as i32,
             has_max_framerate: value.max_framerate.is_some(),
             max_framerate: value.max_framerate.unwrap_or_default(),
             network_priority: value.priority.into(),
