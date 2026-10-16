@@ -205,3 +205,29 @@ impl_thread_safety!(ffi::I422Buffer, Send + Sync);
 impl_thread_safety!(ffi::I444Buffer, Send + Sync);
 impl_thread_safety!(ffi::I010Buffer, Send + Sync);
 impl_thread_safety!(ffi::NV12Buffer, Send + Sync);
+
+#[cfg(test)]
+mod tests {
+    use super::ffi::{self, VideoFrameBufferType};
+
+    // libwebrtc's buffer type enum has kI210 and kI410 before kNV12; a cast
+    // into the bridge's enum turned an NV12 buffer into a value it lacks.
+    #[test]
+    fn buffer_type_reports_the_bridge_variant() {
+        let nv12 = ffi::new_nv12_buffer(4, 2, 4, 4);
+        let i420 = ffi::new_i420_buffer(4, 2, 4, 2, 2);
+        let i010 = ffi::new_i010_buffer(4, 2, 4, 2, 2);
+        // SAFETY: each pointer is an upcast of a buffer owned above.
+        unsafe {
+            let nv12 = ffi::biyuv_to_vfb(ffi::biyuv8_to_biyuv(ffi::nv12_to_biyuv8(
+                nv12.as_ref().unwrap(),
+            )));
+            let i420 = ffi::yuv_to_vfb(ffi::yuv8_to_yuv(ffi::i420_to_yuv8(i420.as_ref().unwrap())));
+            let i010 =
+                ffi::yuv_to_vfb(ffi::yuv16b_to_yuv(ffi::i010_to_yuv16b(i010.as_ref().unwrap())));
+            assert!((*nv12).buffer_type() == VideoFrameBufferType::NV12);
+            assert!((*i420).buffer_type() == VideoFrameBufferType::I420);
+            assert!((*i010).buffer_type() == VideoFrameBufferType::I010);
+        }
+    }
+}
