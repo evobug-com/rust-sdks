@@ -14,6 +14,11 @@
 
 mod connection;
 mod proxy;
+#[cfg(all(
+    feature = "__rustls-tls",
+    not(any(feature = "native-tls", feature = "native-tls-vendored"))
+))]
+mod tls;
 
 use crate::{
     Header, HttpClient, HttpMethod, HttpResponse, TransportError, WsClient, WsConnectResult,
@@ -42,7 +47,13 @@ pub struct NativeTransport {
 
 impl NativeTransport {
     pub(crate) fn new() -> Self {
-        Self { http: reqwest::Client::new() }
+        let builder = reqwest::Client::builder();
+        #[cfg(all(
+            feature = "__rustls-tls",
+            not(any(feature = "native-tls", feature = "native-tls-vendored"))
+        ))]
+        let builder = builder.tls_backend_preconfigured(tls::http_config());
+        Self { http: builder.build().expect("http client") }
     }
 }
 

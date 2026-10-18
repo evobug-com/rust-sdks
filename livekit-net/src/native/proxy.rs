@@ -35,9 +35,34 @@ use tokio::{
     net::TcpStream as TokioTcpStream,
 };
 
-use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
+use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 
 use tokio::net::TcpStream;
+
+/// Connect without a proxy. With rustls the TLS config comes from [`super::tls`];
+/// otherwise tokio-tungstenite picks its native-tls default.
+async fn connect_direct(
+    request: http::Request<()>,
+) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>, TransportError> {
+    #[cfg(all(
+        feature = "__rustls-tls",
+        not(any(feature = "native-tls", feature = "native-tls-vendored"))
+    ))]
+    let (ws_stream, _) = {
+        let connector = tokio_tungstenite::Connector::Rustls(
+            super::tls::ws_config().map_err(TransportError::Connection)?,
+        );
+        tokio_tungstenite::connect_async_tls_with_config(request, None, false, Some(connector))
+            .await
+            .map_err(map_ws_err)?
+    };
+    #[cfg(not(all(
+        feature = "__rustls-tls",
+        not(any(feature = "native-tls", feature = "native-tls-vendored"))
+    )))]
+    let (ws_stream, _) = tokio_tungstenite::connect_async(request).await.map_err(map_ws_err)?;
+    Ok(ws_stream)
+}
 
 pub(super) async fn connect_ws(
     request: http::Request<()>,
@@ -215,13 +240,11 @@ pub(super) async fn connect_ws(
             ws_stream
         } else {
             // Proxy var is empty, connect directly
-            let (ws_stream, _) = connect_async(request).await.map_err(map_ws_err)?;
-            ws_stream
+            connect_direct(request).await?
         }
     } else {
         // No proxy env var set, connect directly
-        let (ws_stream, _) = connect_async(request).await.map_err(map_ws_err)?;
-        ws_stream
+        connect_direct(request).await?
     };
 
     Ok(ws_stream)
