@@ -24,7 +24,7 @@ use webrtc_sys::android::ffi as sys_android;
 /// This function is idempotent - safe to call multiple times.
 pub fn initialize_android(vm: &jni::JavaVM) {
     unsafe {
-        sys_android::init_android(vm.get_java_vm_pointer() as *mut _);
+        sys_android::init_android(vm.get_raw() as *mut _);
     }
 }
 
@@ -56,10 +56,5 @@ pub fn initialize_android(vm: &jni::JavaVM) {
 /// }
 /// ```
 pub fn initialize_android_context(vm: &jni::JavaVM, context: &JObject) -> bool {
-    unsafe {
-        sys_android::init_android_context(
-            vm.get_java_vm_pointer() as *mut _,
-            context.as_raw() as usize,
-        )
-    }
+    unsafe { sys_android::init_android_context(vm.get_raw() as *mut _, context.as_raw() as usize) }
 }

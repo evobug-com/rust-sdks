@@ -13,71 +13,82 @@
 // limitations under the License.
 
 use crate::{DeviceInfo, DeviceInfoError, DeviceType};
-use jni::objects::{GlobalRef, JObject, JValue};
-use jni::JavaVM;
+use jni::objects::{JObject, JString, JValue};
+use jni::refs::Global;
+use jni::{jni_sig, jni_str, Env, JavaVM};
 use std::sync::OnceLock;
 
 static ANDROID_VM: OnceLock<JavaVM> = OnceLock::new();
-static ANDROID_CONTEXT: OnceLock<GlobalRef> = OnceLock::new();
+static ANDROID_CONTEXT: OnceLock<Global<JObject<'static>>> = OnceLock::new();
 
 /// Initialize with just the JavaVM. Sufficient for reading `Build.*` fields (model,
 /// manufacturer). Call from `JNI_OnLoad` where no application `Context` is available.
 pub fn init_vm(vm: &JavaVM) {
-    let vm = unsafe { JavaVM::from_raw(vm.get_java_vm_pointer()).unwrap() };
+    let vm = unsafe { JavaVM::from_raw(vm.get_raw()) };
     let _ = ANDROID_VM.set(vm);
 }
 
 /// Initialize with both the JavaVM and an application `Context`.
 /// Provides full functionality including device name resolution via `Settings.Global`.
 pub fn init(vm: &JavaVM, context: JObject) {
-    let vm = unsafe { JavaVM::from_raw(vm.get_java_vm_pointer()).unwrap() };
-    let mut env = vm.get_env().expect("failed to get JNI env");
-    let context = env.new_global_ref(context).expect("failed to create global ref");
+    let vm = unsafe { JavaVM::from_raw(vm.get_raw()) };
+    let context = vm
+        .attach_current_thread(|env| env.new_global_ref(&context))
+        .expect("failed to create global ref");
     let _ = ANDROID_VM.set(vm);
     let _ = ANDROID_CONTEXT.set(context);
+}
+
+impl From<jni::errors::Error> for DeviceInfoError {
+    fn from(e: jni::errors::Error) -> Self {
+        DeviceInfoError::Jni(e.to_string())
+    }
 }
 
 pub fn device_info() -> Result<DeviceInfo, DeviceInfoError> {
     let vm = ANDROID_VM.get().ok_or(DeviceInfoError::NotInitialized)?;
 
-    let mut env = vm.attach_current_thread().map_err(|e| DeviceInfoError::Jni(e.to_string()))?;
+    vm.attach_current_thread(|env| -> Result<DeviceInfo, DeviceInfoError> {
+        let model = get_build_field(env, jni_str!("MODEL"))?;
+        let manufacturer = get_build_field(env, jni_str!("MANUFACTURER"))?;
+        let name = ANDROID_CONTEXT
+            .get()
+            .and_then(|ctx| get_device_name(env, ctx).ok())
+            .unwrap_or_else(|| model.clone());
+        let device_type = detect_device_type(&manufacturer);
 
-    let model = get_build_field(&mut env, "MODEL")?;
-    let manufacturer = get_build_field(&mut env, "MANUFACTURER")?;
-    let name = ANDROID_CONTEXT
-        .get()
-        .and_then(|ctx| get_device_name(&mut env, ctx).ok())
-        .unwrap_or_else(|| model.clone());
-    let device_type = detect_device_type(&manufacturer);
-
-    Ok(DeviceInfo { model, name, device_type })
+        Ok(DeviceInfo { model, name, device_type })
+    })
 }
 
-fn get_build_field(env: &mut jni::JNIEnv, field: &str) -> Result<String, DeviceInfoError> {
+fn get_build_field(env: &mut Env, field: &jni::strings::JNIStr) -> Result<String, DeviceInfoError> {
     let build_class = env
-        .find_class("android/os/Build")
+        .find_class(jni_str!("android/os/Build"))
         .map_err(|e| DeviceInfoError::Jni(format!("find Build class: {e}")))?;
 
     let value = env
-        .get_static_field(build_class, field, "Ljava/lang/String;")
+        .get_static_field(build_class, field, jni_sig!("Ljava/lang/String;"))
         .map_err(|e| DeviceInfoError::Jni(format!("get Build.{field}: {e}")))?
         .l()
         .map_err(|e| DeviceInfoError::Jni(format!("Build.{field} is not an Object: {e}")))?;
 
-    let jstring: jni::objects::JString = value.into();
-    let rust_str = env
-        .get_string(&jstring)
-        .map_err(|e| DeviceInfoError::Jni(format!("get string Build.{field}: {e}")))?;
-
-    Ok(rust_str.into())
+    let jstring = env
+        .cast_local::<JString>(value)
+        .map_err(|e| DeviceInfoError::Jni(format!("Build.{field}: {e}")))?;
+    jstring
+        .try_to_string(env)
+        .map_err(|e| DeviceInfoError::Jni(format!("get string Build.{field}: {e}")))
 }
 
-fn get_device_name(env: &mut jni::JNIEnv, context: &GlobalRef) -> Result<String, DeviceInfoError> {
+fn get_device_name(
+    env: &mut Env,
+    context: &Global<JObject<'static>>,
+) -> Result<String, DeviceInfoError> {
     let content_resolver = env
         .call_method(
             context.as_obj(),
-            "getContentResolver",
-            "()Landroid/content/ContentResolver;",
+            jni_str!("getContentResolver"),
+            jni_sig!("()Landroid/content/ContentResolver;"),
             &[],
         )
         .map_err(|e| DeviceInfoError::Jni(format!("getContentResolver: {e}")))?
@@ -98,12 +109,12 @@ fn get_device_name(env: &mut jni::JNIEnv, context: &GlobalRef) -> Result<String,
 }
 
 fn get_settings_string(
-    env: &mut jni::JNIEnv,
+    env: &mut Env,
     content_resolver: &JObject,
     key_name: &str,
 ) -> Result<Option<String>, DeviceInfoError> {
     let settings_class = env
-        .find_class("android/provider/Settings$Global")
+        .find_class(jni_str!("android/provider/Settings$Global"))
         .map_err(|e| DeviceInfoError::Jni(format!("find Settings.Global: {e}")))?;
 
     let key =
@@ -112,8 +123,8 @@ fn get_settings_string(
     let result = env
         .call_static_method(
             settings_class,
-            "getString",
-            "(Landroid/content/ContentResolver;Ljava/lang/String;)Ljava/lang/String;",
+            jni_str!("getString"),
+            jni_sig!("(Landroid/content/ContentResolver;Ljava/lang/String;)Ljava/lang/String;"),
             &[JValue::Object(content_resolver), JValue::Object(&key)],
         )
         .map_err(|e| DeviceInfoError::Jni(format!("Settings.Global.getString({key_name}): {e}")))?
@@ -124,11 +135,12 @@ fn get_settings_string(
         return Ok(None);
     }
 
-    let jstring = jni::objects::JString::from(result);
-    let rust_str: String = env
-        .get_string(&jstring)
-        .map_err(|e| DeviceInfoError::Jni(format!("get string {key_name}: {e}")))?
-        .into();
+    let jstring = env
+        .cast_local::<JString>(result)
+        .map_err(|e| DeviceInfoError::Jni(format!("getString result: {e}")))?;
+    let rust_str = jstring
+        .try_to_string(env)
+        .map_err(|e| DeviceInfoError::Jni(format!("get string {key_name}: {e}")))?;
 
     Ok(Some(rust_str))
 }
