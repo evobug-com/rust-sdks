@@ -640,7 +640,7 @@ mod tests {
 
     /// Uniform random bytes — genuinely incompressible (unlike `pseudo_random_text`'s ascii).
     fn random_bytes(len: usize) -> Vec<u8> {
-        use rand::{rngs::StdRng, Rng, SeedableRng};
+        use rand::{rngs::StdRng, RngExt, SeedableRng};
         let mut rng = StdRng::seed_from_u64(0xdead_beef);
         (0..len).map(|_| rng.random::<u8>()).collect()
     }

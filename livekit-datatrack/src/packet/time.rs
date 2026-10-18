@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use rand::Rng;
+use rand::RngExt;
 use std::time::{Duration, Instant};
 
 /// Packet-level timestamp.
@@ -117,7 +117,7 @@ mod tests {
 
 #[cfg(any(test, feature = "__fuzz"))]
 impl<const RATE: u32> fake::Dummy<fake::Faker> for Timestamp<RATE> {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &fake::Faker, rng: &mut R) -> Self {
+    fn dummy_with_rng<R: fake::Rng + ?Sized>(_: &fake::Faker, rng: &mut R) -> Self {
         Self(rng.random())
     }
 }

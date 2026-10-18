@@ -21,7 +21,7 @@ use {
         data_stream::backend::pseudo_random_text, RoomDataStreamOptions, RoomEvent, RoomOptions,
         StreamByteOptions, StreamError, StreamReader, StreamTextOptions,
     },
-    rand::{rngs::StdRng, RngCore, SeedableRng},
+    rand::{rngs::StdRng, Rng, SeedableRng},
     std::time::Duration,
     tokio::{time::timeout, try_join},
 };

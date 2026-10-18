@@ -67,7 +67,7 @@ impl fmt::Debug for Packet {
 
 #[cfg(any(test, feature = "__fuzz"))]
 impl fake::Dummy<usize> for Packet {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(max_payload_len: &usize, rng: &mut R) -> Self {
+    fn dummy_with_rng<R: fake::Rng + ?Sized>(max_payload_len: &usize, rng: &mut R) -> Self {
         use fake::Fake;
         let payload_len = rng.random_range(0..=*max_payload_len);
         let payload = (0..payload_len).map(|_| rng.random()).collect::<Bytes>();
@@ -77,7 +77,7 @@ impl fake::Dummy<usize> for Packet {
 
 #[cfg(any(test, feature = "__fuzz"))]
 impl fake::Dummy<fake::Faker> for Packet {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &fake::Faker, rng: &mut R) -> Self {
+    fn dummy_with_rng<R: fake::Rng + ?Sized>(_: &fake::Faker, rng: &mut R) -> Self {
         use fake::Fake;
         1500usize.fake_with_rng(rng)
     }

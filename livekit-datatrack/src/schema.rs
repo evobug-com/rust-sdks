@@ -339,7 +339,7 @@ impl From<DataTrackSchemaId> for proto::DataBlobKey {
 
 #[cfg(test)]
 impl fake::Dummy<fake::Faker> for DataTrackSchemaId {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &fake::Faker, rng: &mut R) -> Self {
+    fn dummy_with_rng<R: fake::Rng + ?Sized>(_: &fake::Faker, rng: &mut R) -> Self {
         use fake::{Fake, Faker};
         let name: String = Faker.fake_with_rng(rng);
         let encoding: DataTrackSchemaEncoding = Faker.fake_with_rng(rng);

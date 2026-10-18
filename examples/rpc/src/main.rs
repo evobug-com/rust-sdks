@@ -1,6 +1,6 @@
 use livekit::prelude::*;
 use livekit_api::access_token;
-use rand::Rng;
+use rand::RngExt;
 use serde_json::{json, Value};
 use std::env;
 use std::sync::Once;
@@ -45,7 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let api_key = env::var("LIVEKIT_API_KEY").expect("LIVEKIT_API_KEY is not set");
     let api_secret = env::var("LIVEKIT_API_SECRET").expect("LIVEKIT_API_SECRET is not set");
 
-    let room_name = format!("rpc-test-{:x}", rand::thread_rng().gen::<u32>());
+    let room_name = format!("rpc-test-{:x}", rand::rng().random::<u32>());
     println!("[{}] Connecting participants to room: {}", elapsed_time(), room_name);
 
     let (callers_room, greeters_room, math_genius_room) = tokio::try_join!(

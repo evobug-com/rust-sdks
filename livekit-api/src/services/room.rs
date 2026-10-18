@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use super::{ServiceBase, ServiceResult, LIVEKIT_PACKAGE};
 use crate::services::twirp_client::TwirpClient;
 use livekit_token::{get_env_keys, VideoGrants};
-use rand::Rng;
+use rand::RngExt;
 
 const SVC: &str = "RoomService";
 
