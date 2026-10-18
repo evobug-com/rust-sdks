@@ -15,7 +15,6 @@
 #![doc = include_str!("../README.md")]
 
 mod access_token;
-mod jwt_provider;
 
 pub use access_token::*;
 

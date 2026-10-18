@@ -11,13 +11,12 @@ readme = "README.md"
 livekit-protocol = { workspace = true }
 thiserror = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-sha2 = "0.10"
 
-# access_token: HS256 only, via the in-crate HMAC CryptoProvider (jwt_provider.rs).
-# Dropping jsonwebtoken's rust_crypto bundle avoids linking RSA/EC/EdDSA.
-jsonwebtoken = { version = "10", default-features = false }
-hmac = "0.12"
-signature = "2"
+# HS256 through jsonwebtoken's rust_crypto provider, resolved from crate
+# features. An in-crate HMAC-only provider installed as jsonwebtoken's
+# process default would also replace the provider of any other jsonwebtoken
+# user in the process (RS/ES/EdDSA tokens would then fail).
+jsonwebtoken = { version = "11.1", default-features = false, features = ["rust_crypto"] }
 
 [dev-dependencies]
 serde_json = { workspace = true }
